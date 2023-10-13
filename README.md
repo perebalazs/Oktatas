@@ -1,6 +1,6 @@
 # Oktatas
 
-* FEM-2: 2D-s SA vagy ÁSF feladat megoldása
+* FEM-2D.ipynb: 2D-s SA vagy ÁSF feladat megoldása
   * terhelés tetszőleges peremen
   * megfogás tetszőleges peremen $x$ és/vagy $y$ irányban
   * háromszög és/vagy négyszög elemekkel (akár vegyesen is)
