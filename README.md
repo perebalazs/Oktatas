@@ -1,4 +1,4 @@
-# Oktatas
+# Egyszerű példák végeselemes feladatokra Julia+gmsh-val megoldva
 
 * FEM-2D.ipynb: 2D-s SA vagy ÁSF feladat megoldása
   * terhelés tetszőleges peremen
