@@ -439,7 +439,6 @@ function solveStressPlaneStress(problem, q)
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
-    display("elemTags = $elemTags")
     numElem = Int[]
     σ = Vector{Float64}[]
     #σx = Vector{Float64}[]
@@ -597,7 +596,6 @@ function showResultSX(problem, S; name="σx", visible=false, smooth=true)
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     σ, numElem = S
-    display("numElem = $numElem")
     S = gmsh.view.add(name)
     σx = []
     sizehint!(σx, length(numElem))
@@ -610,15 +608,13 @@ function showResultSX(problem, S; name="σx", visible=false, smooth=true)
     end
 
     gmsh.view.addModelData(S, 0, problem.name, "ElementNodeData", numElem, σx, 0, 1)
-    display(numElem)
-    display(σx)
 
     if smooth == true
         gmsh.plugin.setNumber("Smooth", "View", -1)
         gmsh.plugin.run("Smooth")
     end
 
-    #gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
+    gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(S, "TargetError", -1e-4)
     gmsh.view.option.setNumber(S, "MaxRecursionLevel", order + 1)
     if visible == false
