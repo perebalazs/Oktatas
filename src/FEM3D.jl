@@ -83,14 +83,18 @@ function stiffnessMatrixSolid(problem)
                                     0 0 0 (1-2ν)/2 0 0;
                                     0 0 0 0 (1-2ν)/2 0;
                                     0 0 0 0 0 (1-2ν)/2]
+
+    dim = 3
+    rowsOfB = 6
+
     # modell kiválasztása
     gmsh.model.setCurrent(problem.name)
     # csomópontok sorszámának lekérése
     #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     # a lefoglalandó memória méretének becslése
-    lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * 3)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
+    lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * dim)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
     nn = []
     I = []
     J = []
@@ -108,16 +112,16 @@ function stiffnessMatrixSolid(problem)
         ∇h = reshape(dfun, :, numIntPoints)
         nnet = zeros(Int, length(elemTags[i]), numNodes)
         invJac = zeros(3, 3numIntPoints)
-        Iidx = zeros(Int, numNodes * 3, numNodes * 3)
-        Jidx = zeros(Int, numNodes * 3, numNodes * 3)
-        for k in 1:numNodes*3, l in 1:numNodes*3
+        Iidx = zeros(Int, numNodes * dim, numNodes * dim)
+        Jidx = zeros(Int, numNodes * dim, numNodes * dim)
+        for k in 1:numNodes*dim, l in 1:numNodes*dim
             Iidx[k, l] = l
             Jidx[k, l] = k
         end
         ∂h = zeros(3, numNodes * numIntPoints) # ∂h-t mindig csak felül kellene írni, nem kell újra és újra memóriát foglalni neki.
-        B = zeros(6 * numIntPoints, 3 * numNodes) # B-t mindig csak felül kellene írni?
-        K1 = zeros(3 * numNodes, 3 * numNodes)
-        nn2 = zeros(Int, 3 * numNodes)
+        B = zeros(rowsOfB * numIntPoints, dim * numNodes) # B-t mindig csak felül kellene írni?
+        K1 = zeros(dim * numNodes, dim * numNodes)
+        nn2 = zeros(Int, dim * numNodes)
         for j in 1:length(elemTags[i])
             elem = elemTags[i][j]
             for k in 1:numNodes
@@ -130,18 +134,29 @@ function stiffnessMatrixSolid(problem)
             end
             ∂h *= 0
             for k in 1:numIntPoints, l in 1:numNodes
-                ∂h[1:3, (k-1)*numNodes+l] = invJac[1:3, k*3-2:k*3] * ∇h[l*3-2:l*3, k] #??????????????????
+                ∂h[1:dim, (k-1)*numNodes+l] = invJac[1:dim, k*3-2:k*3-(3-dim)] * ∇h[l*3-2:l*3-(3-dim), k] #??????????????????
             end
             B *= 0
-            for k in 1:numIntPoints, l in 1:numNodes
-                B[k*6-5, l*3-2] = B[k*6-2, l*3-1] = B[k*6-0, l*3-0] = ∂h[1, (k-1)*numNodes+l]
-                B[k*6-4, l*3-1] = B[k*6-2, l*3-2] = B[k*6-1, l*3-0] = ∂h[2, (k-1)*numNodes+l]
-                B[k*6-3, l*3-0] = B[k*6-1, l*3-1] = B[k*6-0, l*3-2] = ∂h[3, (k-1)*numNodes+l]
+            if dim == 2 && rowsOfB == 3
+                for k in 1:numIntPoints, l in 1:numNodes
+                    B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
+                    B[k*3-0, l*2-1] = B[k*3-1, l*2-0] = ∂h[2, (k-1)*numNodes+l]
+                end
+            end
+            if dim = 3 && rowsOfB == 6
+                for k in 1:numIntPoints, l in 1:numNodes
+                    B[k*6-5, l*3-2] = B[k*6-2, l*3-1] = B[k*6-0, l*3-0] = ∂h[1, (k-1)*numNodes+l]
+                    B[k*6-4, l*3-1] = B[k*6-2, l*3-2] = B[k*6-1, l*3-0] = ∂h[2, (k-1)*numNodes+l]
+                    B[k*6-3, l*3-0] = B[k*6-1, l*3-1] = B[k*6-0, l*3-2] = ∂h[3, (k-1)*numNodes+l]
+                end
             end
             K1 *= 0
             for k in 1:numIntPoints
-                B1 = B[k*6-5:k*6, 1:3*numNodes]
+                B1 = B[k*rowsOfB-(rowsOfB-1):k*rowsOfB, 1:dim*numNodes]
                 K1 += B1' * D * B1 * jacDet[k] * intWeights[k]
+            end
+            for k in 1:dim
+                nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
             nn2[1:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 2
             nn2[2:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 1
