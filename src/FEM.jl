@@ -755,9 +755,11 @@ function showStressResults(problem, S, comp; name="σ", visible=false, smooth=tr
     S = gmsh.view.add(name)
     if comp == "s"
         σcomp = σ
+        nc =9
     end
     k = 1im
     if comp != "s"
+        nc = 1
         if comp == "sx"
             k = 8
         elseif comp == "sy"
@@ -784,7 +786,7 @@ function showStressResults(problem, S, comp; name="σ", visible=false, smooth=tr
         end
     end
 
-    gmsh.view.addModelData(S, 0, problem.name, "ElementNodeData", numElem, σcomp, 0, 1)
+    gmsh.view.addModelData(S, 0, problem.name, "ElementNodeData", numElem, σcomp, 0, nc)
 
     if smooth == true
         gmsh.plugin.setNumber("Smooth", "View", -1)
