@@ -1,6 +1,6 @@
 //+
 SetFactory("OpenCASCADE");
-Box(1) = {0, 0, 0, 10, 10, 10};
+Box(1) = {0, 0, 0, 100, 10, 10};
 //Box(2) = {20, 0, 0, 10, 10, 10};
 //+
 Physical Surface("supp", 13) = {1};
@@ -15,7 +15,7 @@ MeshSize {1:8} = 20;
 Mesh.ElementOrder = 1;
 //Mesh.HighOrderOptimize = 2;
 
-SetName "cube2";
+SetName "bending3D";
 Mesh 3;
-Mesh.SaveAll=1;
-Save "cube2.msh";
+// Mesh.SaveAll=1;
+// Save "bending3D.msh";

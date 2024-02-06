@@ -11,36 +11,36 @@ struct Problem
     ν::Float64
     ρ::Float64
     b::Float64
-    Problem(name; E=2e5,ν=0.3,ρ=7.85e-9,b=1,type="Solid") = new(name,type,E,ν,ρ,b)
+    function Problem(name; E=2e5,ν=0.3,ρ=7.85e-9,b=1,type="PlaneStress")
+        gmsh.model.add(name)
+        gmsh.model.occ.synchronize()
+        return new(name,type,E,ν,ρ,b)
+    end
 end
 
-function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
-    bc0 = name, ux, uy, uz
+function displacementConstraintOnLines(groupOfLines; ux=1im, uy=1im, name="support")
+    phg = gmsh.model.addPhysicalGroup(1, groupOfLines)
+    gmsh.model.setPhysicalName(1, phg, name)
+    bc0 = name, ux, uy
     return bc0
 end
 
-function traction(name; fx=0, fy=0, fz=0)
-    ld0 = name, fx, fy, fz
-    return ld0
-end
-
-#=
-function displacementConstraint(groupOfLines; ux=1im, uy=1im)
-    phg = gmsh.model.addPhysicalGroup(1, groupOfLines)
-    gmsh.model.setPhysicalName(1, phg, "support")
-    bc0 = phg, ux, uy
+function displacementConstraint(name; ux=1im, uy=1im)
+    bc0 = name, ux, uy
     return bc0
 end
-=#
 
-#=
-function traction(groupOfLines; fx=0, fy=0, thickness=1)
+function tractionOnLines(groupOfLines; fx=0, fy=0, thickness=1, name="load")
     phg = gmsh.model.addPhysicalGroup(1, groupOfLines)
-    gmsh.model.setPhysicalName(1, phg, "load")
-    ld0 = phg, fx, fy, thickness
+    gmsh.model.setPhysicalName(1, phg, name)
+    ld0 = name, fx, fy, thickness
     return ld0
 end
-=#
+
+function traction(name; fx=0, fy=0, thickness=1)
+    ld0 = name, fx, fy, thickness
+    return ld0
+end
 
 """
 Végeselemes felosztás elvégzése
@@ -73,28 +73,21 @@ function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadr
 end
 
 # Merevségi mátrix felépítése
-function stiffnessMatrixSolid(problem)
+function stiffnessMatrixPlaneStress(problem)
     # anyagállandók mátrixa
     E = problem.E
     ν = problem.ν
-    D = E / ((1 + ν) * (1 - 2ν)) * [1-ν ν ν 0 0 0;
-                                    ν 1-ν ν 0 0 0;
-                                    ν ν 1-ν 0 0 0;
-                                    0 0 0 (1-2ν)/2 0 0;
-                                    0 0 0 0 (1-2ν)/2 0;
-                                    0 0 0 0 0 (1-2ν)/2]
-
-    dim = 3
-    rowsOfB = 6
-
+    b = problem.b
+    D = E / (1 - ν^2) * [1 ν 0; ν 1 0; 0 0 (1-ν)/2] # ÁSF feladat
+    #D = E / ((1 + ν) * (1 - 2ν)) * [1-ν ν 0; ν 1-ν 0; 0 0 (1-2ν)/2] # SA feladat
     # modell kiválasztása
     gmsh.model.setCurrent(problem.name)
     # csomópontok sorszámának lekérése
     #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     # a lefoglalandó memória méretének becslése
-    lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * dim)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
+    lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * 2)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
     nn = []
     I = []
     J = []
@@ -112,16 +105,16 @@ function stiffnessMatrixSolid(problem)
         ∇h = reshape(dfun, :, numIntPoints)
         nnet = zeros(Int, length(elemTags[i]), numNodes)
         invJac = zeros(3, 3numIntPoints)
-        Iidx = zeros(Int, numNodes * dim, numNodes * dim)
-        Jidx = zeros(Int, numNodes * dim, numNodes * dim)
-        for k in 1:numNodes*dim, l in 1:numNodes*dim
+        Iidx = zeros(Int, numNodes * 2, numNodes * 2)
+        Jidx = zeros(Int, numNodes * 2, numNodes * 2)
+        for k in 1:numNodes*2, l in 1:numNodes*2
             Iidx[k, l] = l
             Jidx[k, l] = k
         end
         ∂h = zeros(3, numNodes * numIntPoints) # ∂h-t mindig csak felül kellene írni, nem kell újra és újra memóriát foglalni neki.
-        B = zeros(rowsOfB * numIntPoints, dim * numNodes) # B-t mindig csak felül kellene írni?
-        K1 = zeros(dim * numNodes, dim * numNodes)
-        nn2 = zeros(Int, dim * numNodes)
+        B = zeros(3 * numIntPoints, 2 * numNodes) # B-t mindig csak felül kellene írni?
+        K1 = zeros(2 * numNodes, 2 * numNodes)
+        nn2 = zeros(Int, 2 * numNodes)
         for j in 1:length(elemTags[i])
             elem = elemTags[i][j]
             for k in 1:numNodes
@@ -134,33 +127,20 @@ function stiffnessMatrixSolid(problem)
             end
             ∂h *= 0
             for k in 1:numIntPoints, l in 1:numNodes
-                ∂h[1:dim, (k-1)*numNodes+l] = invJac[1:dim, k*3-2:k*3-(3-dim)] * ∇h[l*3-2:l*3-(3-dim), k] #??????????????????
+                ∂h[1:2, (k-1)*numNodes+l] = invJac[1:2, k*3-2:k*3-1] * ∇h[l*3-2:l*3-1, k] #??????????????????
             end
             B *= 0
-            if dim == 2 && rowsOfB == 3
-                for k in 1:numIntPoints, l in 1:numNodes
-                    B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
-                    B[k*3-0, l*2-1] = B[k*3-1, l*2-0] = ∂h[2, (k-1)*numNodes+l]
-                end
-            end
-            if dim = 3 && rowsOfB == 6
-                for k in 1:numIntPoints, l in 1:numNodes
-                    B[k*6-5, l*3-2] = B[k*6-2, l*3-1] = B[k*6-0, l*3-0] = ∂h[1, (k-1)*numNodes+l]
-                    B[k*6-4, l*3-1] = B[k*6-2, l*3-2] = B[k*6-1, l*3-0] = ∂h[2, (k-1)*numNodes+l]
-                    B[k*6-3, l*3-0] = B[k*6-1, l*3-1] = B[k*6-0, l*3-2] = ∂h[3, (k-1)*numNodes+l]
-                end
+            for k in 1:numIntPoints, l in 1:numNodes
+                B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
+                B[k*3-0, l*2-1] = B[k*3-1, l*2-0] = ∂h[2, (k-1)*numNodes+l]
             end
             K1 *= 0
             for k in 1:numIntPoints
-                B1 = B[k*rowsOfB-(rowsOfB-1):k*rowsOfB, 1:dim*numNodes]
-                K1 += B1' * D * B1 * jacDet[k] * intWeights[k]
+                B1 = B[k*3-2:k*3, 1:2*numNodes]
+                K1 += B1' * D * B1 * jacDet[k] * b * intWeights[k]
             end
-            for k in 1:dim
-                nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
-            end
-            nn2[1:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 2
-            nn2[2:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 1
-            nn2[3:3:3*numNodes] = 3 * nnet[j, 1:numNodes]
+            nn2[1:2:2*numNodes] = 2 * nnet[j, 1:numNodes] .- 1
+            nn2[2:2:2*numNodes] = 2 * nnet[j, 1:numNodes]
             append!(I, nn2[Iidx[:]])
             append!(J, nn2[Jidx[:]])
             append!(V, K1[:])
@@ -246,9 +226,9 @@ function applyBoundaryConditions!(problem, stiffMat, supports, tractions)
 end
 
 function getTagForPhysicalName(name)
-    dimTags = gmsh.model.getPhysicalGroups(2)
+    dimTags = gmsh.model.getPhysicalGroups(1)
     i = 1
-    while gmsh.model.getPhysicalName(2, dimTags[i][2]) != name
+    while gmsh.model.getPhysicalName(1, dimTags[i][2]) != name
         i += 1
         if i > length(dimTags)
             error("Physical name '$name' does not exist.")
@@ -257,108 +237,94 @@ function getTagForPhysicalName(name)
     return dimTags[i][2]
 end
 
+
 function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports, tractions)
     gmsh.model.setCurrent(problem.name)
     dof, dof = size(stiffMat)
     fp = zeros(dof)
     for n in 1:length(tractions)
-        name, fx, fy, fz = tractions[n]
-        f = [fx, fy, fz]
-        #tags = gmsh.model.getEntitiesForPhysicalGroup(2, phg)
+        name, fx, fy, b = tractions[n]
+        f = [fx, fy]
         dimTags = gmsh.model.getEntitiesForPhysicalName(name)
         for i ∈ 1:length(dimTags)
             dimTag = dimTags[i]
             dim = dimTag[1]
             tag = dimTag[2]
-            elementTypes, elementTags, elemNodeTags = gmsh.model.mesh.getElements(2, tag)
-            for ii in 1:length(elementTypes)
-                elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elementTypes[ii])
-                nnoe = reshape(elemNodeTags[ii], numNodes, :)'
-                intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(elementTypes[ii], "Gauss" * string(order))
-                numIntPoints = length(intWeights)
-                comp, fun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[ii], intPoints, "Lagrange")
-                h = reshape(fun, :, numIntPoints)
-                #comp, dfun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[1], intPoints, "GradLagrange")
-                #∇h = reshape(dfun, :, numIntPoints)
-                H = zeros(3 * numIntPoints, 3 * numNodes)
-                for j in 1:numIntPoints
-                    for k in 1:numNodes
-                        H[j*3-2, k*3-2] = h[k, j]
-                        H[j*3-1, k*3-1] = h[k, j]
-                        H[j*3-0, k*3-0] = h[k, j]
-                    end
-                end
-                f1 = zeros(3 * numNodes)
-                nn2 = zeros(Int, 3 * numNodes)
-                for l in 1:length(elementTags[ii])
-                    elem = elementTags[ii][l]
-                    jac, jacDet, coord = gmsh.model.mesh.getJacobian(elem, intPoints)
-                    Jac = reshape(jac, 3, :)
-                    f1 *= 0
-                    for j in 1:numIntPoints
-                        H1 = H[j*3-2:j*3, 1:3*numNodes]
-                        ############### NANSON ###########################################
-                        xy = Jac[1, 3*j-2] * Jac[2, 3*j-1] - Jac[2, 3*j-2] * Jac[1, 3*j-1]
-                        yz = Jac[2, 3*j-2] * Jac[3, 3*j-1] - Jac[3, 3*j-2] * Jac[2, 3*j-1]
-                        zx = Jac[3, 3*j-2] * Jac[1, 3*j-1] - Jac[1, 3*j-2] * Jac[3, 3*j-1]
-                        Ja = √(xy^2 + yz^2 + zx^2)
-                        #Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2)
-                        f1 += H1' * f * Ja * intWeights[j]
-                    end
-                    nn2[1:3:3*numNodes] = 3 * nnoe[l, 1:numNodes] .- 2
-                    nn2[2:3:3*numNodes] = 3 * nnoe[l, 1:numNodes] .- 1
-                    nn2[3:3:3*numNodes] = 3 * nnoe[l, 1:numNodes]
-                    fp[nn2] += f1
+            #display("traction on $tag")
+            if dim != 1
+                error("Plane Stress: A perem csak egydimenziós lehet!")
+            end
+            elementTypes, elementTags, elemNodeTags = gmsh.model.mesh.getElements(1, tag)
+            if length(elementTypes) != 1
+                error("A peremen nem csak egyfajta végeselem van!")
+            end
+            #display("elementTags: $elementTags")
+            elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elementTypes[1])
+            nnoe = reshape(elemNodeTags[1], numNodes, :)'
+            intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(elementTypes[1], "Gauss" * string(order))
+            numIntPoints = length(intWeights)
+            comp, fun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[1], intPoints, "Lagrange")
+            h = reshape(fun, :, numIntPoints)
+            #comp, dfun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[1], intPoints, "GradLagrange")
+            #∇h = reshape(dfun, :, numIntPoints)
+            H = zeros(2 * numIntPoints, 2 * numNodes)
+            for j in 1:numIntPoints
+                for k in 1:numNodes
+                    H[j*2-1, k*2-1] = h[k, j]
+                    H[j*2-0, k*2-0] = h[k, j]
                 end
             end
+            f1 = zeros(2 * numNodes)
+            nn2 = zeros(Int, 2 * numNodes)
+            for l in 1:length(elementTags[1])
+                elem = elementTags[1][l]
+                jac, jacDet, coord = gmsh.model.mesh.getJacobian(elem, intPoints)
+                Jac = reshape(jac, 3, :)
+                f1 *= 0
+                for j in 1:numIntPoints
+                    H1 = H[j*2-1:j*2, 1:2*numNodes]
+                    Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2)
+                    f1 += H1' * f * Ja * b * intWeights[j]
+                end
+                nn2[1:2:2*numNodes] = 2 * nnoe[l, 1:numNodes] .- 1
+                nn2[2:2:2*numNodes] = 2 * nnoe[l, 1:numNodes]
+                fp[nn2] += f1
+            end
         end
+
     end
 
     for i in 1:length(supports)
-        name, ux, uy, uz = supports[i]
-        #display(name)
+        name, ux, uy = supports[i]
         phg = getTagForPhysicalName(name)
-        nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(2, phg)
-        #phg, ux, uy = supports[i]
-        #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
+        nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
         if ux != 1im
             nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 2
+            nodeTagsX *= 2
+            nodeTagsX .-= 1
             f0 = spzeros(dof, length(nodeTagsX))
             f0 = stiffMat[:, nodeTagsX] * ux
             f0 = sum(f0, dims=2)
             fp -= f0
         end
         if uy != 1im
-            nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 1
-            f0 = spzeros(dof, length(nodeTagsX))
-            f0 = stiffMat[:, nodeTagsX] * uy
-            f0 = sum(f0, dims=2)
-            fp -= f0
-        end
-        if uz != 1im
             nodeTagsY = copy(nodeTags)
-            nodeTagsY *= 3
+            nodeTagsY *= 2
             f0 = spzeros(dof, length(nodeTagsY))
-            f0 = stiffMat[:, nodeTagsY] * uz
+            f0 = stiffMat[:, nodeTagsY] * uy
             f0 = sum(f0, dims=2)
             fp -= f0
         end
     end
 
     for i in 1:length(supports)
-        #phg, ux, uy = supports[i]
-        #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
-        name, ux, uy, uz = supports[i]
+        name, ux, uy = supports[i]
         phg = getTagForPhysicalName(name)
-        nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(2, phg)
+        nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
         if ux != 1im
             nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 2
+            nodeTagsX *= 2
+            nodeTagsX .-= 1
             for j ∈ nodeTagsX
                 stiffMat[j, :] .= 0
                 stiffMat[:, j] .= 0
@@ -373,25 +339,8 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
             end
         end
         if uy != 1im
-            nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 1
-            for j ∈ nodeTagsX
-                stiffMat[j, :] .= 0
-                stiffMat[:, j] .= 0
-                stiffMat[j, j] = 1
-                massMat[j, :] .= 0
-                massMat[:, j] .= 0
-                massMat[j, j] = 1
-                dampMat[j, :] .= 0
-                dampMat[:, j] .= 0
-                dampMat[j, j] = 1
-                fp[j] = uy
-            end
-        end
-        if uz != 1im
             nodeTagsY = copy(nodeTags)
-            nodeTagsY *= 3
+            nodeTagsY *= 2
             for j ∈ nodeTagsY
                 stiffMat[j, :] .= 0
                 stiffMat[:, j] .= 0
@@ -402,7 +351,7 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                 dampMat[j, :] .= 0
                 dampMat[:, j] .= 0
                 dampMat[j, j] = 1
-                fp[j] = uz
+                fp[j] = uy
             end
         end
     end
@@ -484,17 +433,13 @@ end
 function solveStressPlaneStress(problem, q)
     E = problem.E
     ν = problem.ν
-    D = E / ((1 + ν) * (1 - 2ν)) * [1-ν ν ν 0 0 0;
-                                    ν 1-ν ν 0 0 0;
-                                    ν ν 1-ν 0 0 0;
-                                    0 0 0 (1-2ν)/2 0 0;
-                                    0 0 0 0 (1-2ν)/2 0;
-                                    0 0 0 0 0 (1-2ν)/2]
+    D = E / (1 - ν^2) * [1 ν 0; ν 1 0; 0 0 (1-ν)/2] # ÁSF feladat
     gmsh.model.setCurrent(problem.name)
     # csomópontok sorszámának lekérése
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
+    display("elemTags = $elemTags")
     numElem = Int[]
     σ = Vector{Float64}[]
     #σx = Vector{Float64}[]
@@ -503,9 +448,9 @@ function solveStressPlaneStress(problem, q)
     for i in 1:length(elemTypes)
         et = elemTypes[i]
         elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(et)
-        s0 = zeros(6numNodes) # csak SA és ÁSF feladatnál, FSZ-nél már 4 kell
+        s0 = zeros(3numNodes) # csak SA és ÁSF feladatnál, FSZ-nél már 4 kell
         nodeCoord = zeros(numNodes * 3)
-        for k in 1:dim, j = 1:numNodes
+        for k in 1:dim, j in 1:numNodes
             nodeCoord[k+(j-1)*3] = localNodeCoord[k+(j-1)*dim]
         end
         comp, dfun, ori = gmsh.model.mesh.getBasisFunctions(et, nodeCoord, "GradLagrange")
@@ -513,8 +458,8 @@ function solveStressPlaneStress(problem, q)
         nnet = zeros(Int, length(elemTags[i]), numNodes)
         invJac = zeros(3, 3numNodes)
         ∂h = zeros(3, numNodes * numNodes)
-        B = zeros(6 * numNodes, 3 * numNodes)
-        nn2 = zeros(Int, 3 * numNodes)
+        B = zeros(3 * numNodes, 2 * numNodes)
+        nn2 = zeros(Int, 2 * numNodes)
         for j in 1:length(elemTags[i])
             elem = elemTags[i][j]
             for k in 1:numNodes
@@ -527,32 +472,24 @@ function solveStressPlaneStress(problem, q)
             end
             ∂h *= 0
             for k in 1:numNodes, l in 1:numNodes
-                ∂h[1:3, (k-1)*numNodes+l] = invJac[1:3, k*3-2:k*3] * ∇h[l*3-2:l*3, k] #??????????????????
+                ∂h[1:2, (k-1)*numNodes+l] = invJac[1:2, k*3-2:k*3-1] * ∇h[l*3-2:l*3-1, k] #??????????????????
             end
             B *= 0
             for k in 1:numNodes, l in 1:numNodes
-                B[k*6-5, l*3-2] = B[k*6-2, l*3-1] = B[k*6-0, l*3-0] = ∂h[1, (k-1)*numNodes+l]
-                B[k*6-4, l*3-1] = B[k*6-2, l*3-2] = B[k*6-1, l*3-0] = ∂h[2, (k-1)*numNodes+l]
-                B[k*6-3, l*3-0] = B[k*6-1, l*3-1] = B[k*6-0, l*3-2] = ∂h[3, (k-1)*numNodes+l]
-                #B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
-                #B[k*3-0, l*2-1] = B[k*3-1, l*2-0] = ∂h[2, (k-1)*numNodes+l]
+                B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
+                B[k*3-0, l*2-1] = B[k*3-1, l*2-0] = ∂h[2, (k-1)*numNodes+l]
             end
             push!(numElem, elem)
-            nn2[1:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 2
-            nn2[2:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 1
-            nn2[3:3:3*numNodes] = 3 * nnet[j, 1:numNodes]
-            #nn2[1:2:2*numNodes] = 2 * nnet[j, 1:numNodes] .- 1
-            #nn2[2:2:2*numNodes] = 2 * nnet[j, 1:numNodes]
+            nn2[1:2:2*numNodes] = 2 * nnet[j, 1:numNodes] .- 1
+            nn2[2:2:2*numNodes] = 2 * nnet[j, 1:numNodes]
             s = zeros(9numNodes) # tenzornak 9 eleme van
             #sx = zeros(numNodes)
             #sy = zeros(numNodes)
             #sxy = zeros(numNodes)
             for k in 1:numNodes
-                B1 = B[k*6-5:k*6, 1:3*numNodes]
+                B1 = B[k*3-2:k*3, 1:2*numNodes]
                 s0 = D * B1 * q[nn2]
-                s[(k-1)*9+1:k*9] = [s0[1], s0[4], s0[6],
-                                    s0[4], s0[2], s0[5],
-                                    s0[6], s0[5], s0[3]]
+                s[(k-1)*9+1:k*9] = [s0[1], s0[3], 0, s0[3], s0[2], 0, 0, 0, 0]
                 #sx[k] = s0[1]
                 #sy[k] = s0[2]
                 #sxy[k] = s0[3]
@@ -568,16 +505,15 @@ end
 
 function showResultUvec(problem, q; name="uvec", visible=false)
     gmsh.model.setCurrent(problem.name)
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     non = length(nodeTags)
     uvec = gmsh.view.add(name)
     u = zeros(3 * non)
     for i in 1:length(nodeTags)
-        u[3i-2] = q[3*nodeTags[i]-2]
-        u[3i-1] = q[3*nodeTags[i]-1]
-        u[3i-0] = q[3*nodeTags[i]-0]
+        u[3i-2] = q[2*nodeTags[i]-1]
+        u[3i-1] = q[2*nodeTags[i]-0]
     end
     gmsh.view.addHomogeneousModelData(uvec, 0, problem.name, "NodeData", nodeTags, u, 0, 3)
 
@@ -592,14 +528,14 @@ end
 
 function showResultUX(problem, q; name="ux", visible=false)
     gmsh.model.setCurrent(problem.name)
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     non = length(nodeTags)
     ux = gmsh.view.add(name)
     u = zeros(non)
     for i in 1:length(nodeTags)
-        u[i] = q[3*nodeTags[i]-2]
+        u[i] = q[2*nodeTags[i]-1]
     end
     gmsh.view.addHomogeneousModelData(ux, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
 
@@ -614,14 +550,14 @@ end
 
 function showResultUY(problem, q; name="uy", visible=false)
     gmsh.model.setCurrent(problem.name)
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     non = length(nodeTags)
     uy = gmsh.view.add(name)
     u = zeros(non)
     for i in 1:length(nodeTags)
-        u[i] = q[3*nodeTags[i]-1]
+        u[i] = q[2*nodeTags[i]-0]
     end
     gmsh.view.addHomogeneousModelData(uy, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
 
@@ -634,31 +570,9 @@ function showResultUY(problem, q; name="uy", visible=false)
     return uy
 end
 
-function showResultUZ(problem, q; name="uz", visible=false)
-    gmsh.model.setCurrent(problem.name)
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
-    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
-    non = length(nodeTags)
-    uz = gmsh.view.add(name)
-    u = zeros(non)
-    for i in 1:length(nodeTags)
-        u[i] = q[3*nodeTags[i]-0]
-    end
-    gmsh.view.addHomogeneousModelData(uz, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
-
-    gmsh.view.option.setNumber(uy, "AdaptVisualizationGrid", 1)
-    gmsh.view.option.setNumber(uy, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(uy, "MaxRecursionLevel", order + 1)
-    if visible == false
-        gmsh.view.option.setNumber(uz, "Visible", 0)
-    end
-    return uz
-end
-
 function showResultS(problem, S; name="σ", visible=true, smooth=true)
     gmsh.model.setCurrent(problem.name)
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(3, -1)
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     σ, numElem = S
     S = gmsh.view.add(name)
@@ -683,6 +597,7 @@ function showResultSX(problem, S; name="σx", visible=false, smooth=true)
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     σ, numElem = S
+    display("numElem = $numElem")
     S = gmsh.view.add(name)
     σx = []
     sizehint!(σx, length(numElem))
@@ -695,13 +610,15 @@ function showResultSX(problem, S; name="σx", visible=false, smooth=true)
     end
 
     gmsh.view.addModelData(S, 0, problem.name, "ElementNodeData", numElem, σx, 0, 1)
+    display(numElem)
+    display(σx)
 
     if smooth == true
         gmsh.plugin.setNumber("Smooth", "View", -1)
         gmsh.plugin.run("Smooth")
     end
 
-    gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
+    #gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(S, "TargetError", -1e-4)
     gmsh.view.option.setNumber(S, "MaxRecursionLevel", order + 1)
     if visible == false
