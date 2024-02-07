@@ -670,7 +670,7 @@ function showResultUvec(problem, q; name="uvec", visible=false)
 
     gmsh.view.option.setNumber(uvec, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uvec, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(uvec, "MaxRecursionLevel", order + 1)
+    gmsh.view.option.setNumber(uvec, "MaxRecursionLevel", 1) # order + 1
     if visible == false
         gmsh.view.option.setNumber(uvec, "Visible", 0)
     end
@@ -693,7 +693,7 @@ function showResultUX(problem, q; name="ux", visible=false)
 
     gmsh.view.option.setNumber(ux, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(ux, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(ux, "MaxRecursionLevel", order + 1)
+    gmsh.view.option.setNumber(ux, "MaxRecursionLevel", 1)
     if visible == false
         gmsh.view.option.setNumber(ux, "Visible", 0)
     end
@@ -716,7 +716,7 @@ function showResultUY(problem, q; name="uy", visible=false)
 
     gmsh.view.option.setNumber(uy, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uy, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(uy, "MaxRecursionLevel", order + 1)
+    gmsh.view.option.setNumber(uy, "MaxRecursionLevel", 1)
     if visible == false
         gmsh.view.option.setNumber(uy, "Visible", 0)
     end
@@ -739,7 +739,7 @@ function showResultUZ(problem, q; name="uz", visible=false)
 
     gmsh.view.option.setNumber(uz, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uz, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(uz, "MaxRecursionLevel", order + 1)
+    gmsh.view.option.setNumber(uz, "MaxRecursionLevel", 1)
     if visible == false
         gmsh.view.option.setNumber(uz, "Visible", 0)
     end
@@ -795,15 +795,25 @@ function showStressResults(problem, S, comp; name="σ", visible=false, smooth=tr
 
     gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(S, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(S, "MaxRecursionLevel", order + 1)
+    gmsh.view.option.setNumber(S, "MaxRecursionLevel", 1)
     if visible == false
         gmsh.view.option.setNumber(S, "Visible", 0)
     end
+    display("$comp..ok")
     return S
 end
 
-function plotOnPath(problem, path, field, points; numOfStep=0, name="path", visible=false)
+function plotOnPath(problem, pathName, field, points; numOfStep=0, name="path", visible=false)
     gmsh.model.setCurrent(problem.name)
+    dimTags = gmsh.model.getEntitiesForPhysicalName(pathName)
+    i = 1
+    while dimTags[i][1] != 1
+        i += 1
+        if i > length(dimTags)
+            error("Physical name '$name' with dimension ONE does not exist.")
+        end
+    end
+    path = dimTags[i][2]
     dataType, tags, data, time, numComponents = gmsh.view.getModelData(field, numOfStep)
     bounds = gmsh.model.getParametrizationBounds(1, path)
     bound1 = bounds[1][1]

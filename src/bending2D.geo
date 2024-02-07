@@ -10,7 +10,7 @@ Physical Curve("load", 6) = {2};
 Physical Surface("body", 7) = {1};
 
 MeshSize {1:4} = 3;
-Mesh.ElementOrder = 1;
+Mesh.ElementOrder = 3;
 //Mesh.HighOrderOptimize = 2;
 
 SetName "bending2D";
@@ -18,3 +18,11 @@ Mesh 2;
 // Mesh.SaveAll=1;
 // Save "bending3D.msh";
 
+//+
+Point(5) = {10, 0, 0, 1.0};
+//+
+Point(6) = {10, 10, 0, 1.0};
+//+
+Line(5) = {5, 6};
+//+
+Physical Curve("path", 8) = {5};
