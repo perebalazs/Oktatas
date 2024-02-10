@@ -31,6 +31,7 @@ Physical Curve("fix", 7) = {5};
 //+
 Physical Curve("load", 8) = {2};
 //+
+SetName "Lshape";
 Mesh.ElementOrder = 4;
 Mesh.HighOrderOptimize = 1;
 Mesh 2;
@@ -43,5 +44,5 @@ Line(7) = {7, 8};
 //+
 Physical Curve("path", 9) = {7};
 //+
-Mesh.SaveAll=1;
-Save "LshapedPlate.msh";
+//Mesh.SaveAll=1;
+//Save "LshapedPlate.msh";

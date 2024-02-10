@@ -12,18 +12,7 @@ struct Problem
     ν::Float64
     ρ::Float64
     thickness::Float64
-    function Problem(name; E=2e5, ν=0.3, ρ=7.85e-9, thickness=1, type="Solid")
-        if type == "Solid"
-            dim = 3
-        elseif type == "PlaneStress"
-            dim = 2
-        elseif type == "PlaneStrain"
-            dim = 2
-        else
-            error("Problem = $problem ????")
-        end
-        return new(name, type, dim, E, ν, ρ, thickness)
-    end
+    Problem(name; E=2e5,ν=0.3,ρ=7.85e-9,thickness=1,dim=3,type="Solid") = new(name,type,dim,E,ν,ρ,thickness)
 end
 
 function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
@@ -36,8 +25,27 @@ function traction(name; fx=0, fy=0, fz=0)
     return ld0
 end
 
+#=
+function displacementConstraint(groupOfLines; ux=1im, uy=1im)
+    phg = gmsh.model.addPhysicalGroup(1, groupOfLines)
+    gmsh.model.setPhysicalName(1, phg, "support")
+    bc0 = phg, ux, uy
+    return bc0
+end
+=#
 
-#Végeselemes felosztás elvégzése
+#=
+function traction(groupOfLines; fx=0, fy=0, thickness=1)
+    phg = gmsh.model.addPhysicalGroup(1, groupOfLines)
+    gmsh.model.setPhysicalName(1, phg, "load")
+    ld0 = phg, fx, fy, thickness
+    return ld0
+end
+=#
+
+"""
+Végeselemes felosztás elvégzése
+"""
 function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadrangle=0, internalNodes=0)
     gmsh.model.setCurrent(problem.name)
     # lekérjük az összes csomópontot
@@ -65,9 +73,8 @@ function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadr
     gmsh.model.mesh.setOrder(approxOrder)
 end
 
-
 # Merevségi mátrix felépítése
-function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
+function stiffnessMatrixSolid(problem, PhGname; E=1im, ν=1im)
     if E == 1im || ν == 1im
         E = problem.E
         ν = problem.ν
@@ -187,7 +194,7 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
 end
 
 # Tömeg mátrix felépítése
-function massMatrix(problem, PhGname; ρ=1im)
+function massMatrixPlaneStress(problem, PhGname; ρ=1im)
     if ρ == 1im
         ρ = problem.ρ
     end
@@ -666,48 +673,22 @@ function solveStress(problem, q)
     return σ, numElem
 end
 
-function showDisplacementResults(problem, q, comp; name="u", visible=false)
+function showResultUvec(problem, q; name="uvec", visible=false)
     gmsh.model.setCurrent(problem.name)
     dim = problem.dim
+    #display("dim = $dim")
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, -1)
+    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     non = length(nodeTags)
     uvec = gmsh.view.add(name)
-    k = 1im
-    if comp == "uvec"
-        #ucomp = σ
-        nc = 3
-        u = zeros(3 * non)
-        for i in 1:length(nodeTags)
-            u[3i-2] = q[dim*nodeTags[i]-(dim-1)]
-            u[3i-1] = q[dim*nodeTags[i]-(dim-2)]
-            u[3i-0] = dim == 3 ? q[dim*nodeTags[i]-(dim-3)] : 0
-        end
-    elseif comp != "uvec" # else?
-        nc = 1
-        if comp == "ux"
-            k = 1
-        elseif comp == "uy"
-            k = 2
-        elseif comp == "uz"
-            k = 3
-        else
-            error("ShowDisplacementResults: component is $comp ????")
-        end
-        u = zeros(non)
-        for i in 1:length(nodeTags)
-            if dim*nodeTags[i]-(dim-k) == 0
-                display("i = $i")
-                display("k = $k")
-                display("nodeTags[i] = $(nodeTags[i])")
-                display("dim*nodeTags[i]-(dim-k) = $(dim*nodeTags[i]-(dim-k))")
-            end
-            u[i] = dim == 2 && k == 3 ? 0 : q[dim*nodeTags[i]-(dim-k)]
-        end
+    u = zeros(3 * non)
+    for i in 1:length(nodeTags)
+        u[3i-2] = q[dim*nodeTags[i]-(dim-1)]
+        u[3i-1] = q[dim*nodeTags[i]-(dim-2)]
+        u[3i-0] = dim == 3 ? q[dim*nodeTags[i]-0] : 0
     end
-
-    gmsh.view.addHomogeneousModelData(uvec, 0, problem.name, "NodeData", nodeTags, u, 0, nc)
+    gmsh.view.addHomogeneousModelData(uvec, 0, problem.name, "NodeData", nodeTags, u, 0, 3)
 
     gmsh.view.option.setNumber(uvec, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uvec, "TargetError", -1e-4)
@@ -715,8 +696,76 @@ function showDisplacementResults(problem, q, comp; name="u", visible=false)
     if visible == false
         gmsh.view.option.setNumber(uvec, "Visible", 0)
     end
-    display("$comp..ok")
     return uvec
+end
+
+function showResultUX(problem, q; name="ux", visible=false)
+    gmsh.model.setCurrent(problem.name)
+    dim = problem.dim
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
+    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
+    non = length(nodeTags)
+    ux = gmsh.view.add(name)
+    u = zeros(non)
+    for i in 1:length(nodeTags)
+        u[i] = q[dim*nodeTags[i]-(dim-1)]
+    end
+    gmsh.view.addHomogeneousModelData(ux, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
+
+    gmsh.view.option.setNumber(ux, "AdaptVisualizationGrid", 1)
+    gmsh.view.option.setNumber(ux, "TargetError", -1e-4)
+    gmsh.view.option.setNumber(ux, "MaxRecursionLevel", 1)
+    if visible == false
+        gmsh.view.option.setNumber(ux, "Visible", 0)
+    end
+    return ux
+end
+
+function showResultUY(problem, q; name="uy", visible=false)
+    gmsh.model.setCurrent(problem.name)
+    dim = problem.dim
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
+    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
+    non = length(nodeTags)
+    uy = gmsh.view.add(name)
+    u = zeros(non)
+    for i in 1:length(nodeTags)
+        u[i] = q[dim*nodeTags[i]-(dim-2)]
+    end
+    gmsh.view.addHomogeneousModelData(uy, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
+
+    gmsh.view.option.setNumber(uy, "AdaptVisualizationGrid", 1)
+    gmsh.view.option.setNumber(uy, "TargetError", -1e-4)
+    gmsh.view.option.setNumber(uy, "MaxRecursionLevel", 1)
+    if visible == false
+        gmsh.view.option.setNumber(uy, "Visible", 0)
+    end
+    return uy
+end
+
+function showResultUZ(problem, q; name="uz", visible=false)
+    gmsh.model.setCurrent(problem.name)
+    dim = problem.dim
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
+    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
+    non = length(nodeTags)
+    uz = gmsh.view.add(name)
+    u = zeros(non)
+    for i in 1:length(nodeTags)
+        u[i] = dim == 3 ? q[dim*nodeTags[i]-0] : 0
+    end
+    gmsh.view.addHomogeneousModelData(uz, 0, problem.name, "NodeData", nodeTags, u, 0, 1)
+
+    gmsh.view.option.setNumber(uz, "AdaptVisualizationGrid", 1)
+    gmsh.view.option.setNumber(uz, "TargetError", -1e-4)
+    gmsh.view.option.setNumber(uz, "MaxRecursionLevel", 1)
+    if visible == false
+        gmsh.view.option.setNumber(uz, "Visible", 0)
+    end
+    return uz
 end
 
 function showStressResults(problem, S, comp; name="σ", visible=false, smooth=true)
@@ -726,13 +775,12 @@ function showStressResults(problem, S, comp; name="σ", visible=false, smooth=tr
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     σ, numElem = S
     S = gmsh.view.add(name)
-    k = 1im
     if comp == "s"
         σcomp = σ
-        nc = 9
-    else
-    #end
-    #if comp != "s"
+        nc =9
+    end
+    k = 1im
+    if comp != "s"
         nc = 1
         if comp == "sx"
             k = 8
@@ -830,8 +878,8 @@ end
 
 function showResultsVTvec(problem, v, t; name="v(t)", visible=false)
     gmsh.model.setCurrent(problem.name)
-    dim = problem.dim
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+
+    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(2, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     non = length(nodeTags)
@@ -841,9 +889,8 @@ function showResultsVTvec(problem, v, t; name="v(t)", visible=false)
     dof, nsteps = size(v)
     for j in 1:nsteps
         for i in 1:length(nodeTags)
-            vv[3i-2] = v[dim*nodeTags[i]-(dim-1), j]
-            vv[3i-1] = v[dim*nodeTags[i]-(dim-2), j]
-            vv[3i-0] = dim == 3 ? v[dim*nodeTags[i]-0, j] : 0
+            vv[3i-2] = v[2*nodeTags[i]-1, j]
+            vv[3i-1] = v[2*nodeTags[i]-0, j]
         end
         gmsh.view.addHomogeneousModelData(vvec, j - 1, "rectangle", "NodeData", nodeTags, vv, t[j], 3)
     end
