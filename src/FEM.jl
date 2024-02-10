@@ -671,7 +671,7 @@ function showDisplacementResults(problem, q, comp; name="u", visible=false)
     dim = problem.dim
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, -1)
+    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, -1, true)
     non = length(nodeTags)
     uvec = gmsh.view.add(name)
     k = 1im
@@ -697,12 +697,6 @@ function showDisplacementResults(problem, q, comp; name="u", visible=false)
         end
         u = zeros(non)
         for i in 1:length(nodeTags)
-            if dim*nodeTags[i]-(dim-k) == 0
-                display("i = $i")
-                display("k = $k")
-                display("nodeTags[i] = $(nodeTags[i])")
-                display("dim*nodeTags[i]-(dim-k) = $(dim*nodeTags[i]-(dim-k))")
-            end
             u[i] = dim == 2 && k == 3 ? 0 : q[dim*nodeTags[i]-(dim-k)]
         end
     end
