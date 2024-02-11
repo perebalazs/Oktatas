@@ -26,6 +26,11 @@ struct Problem
     end
 end
 
+struct StressField
+    sigma::Vector{Vector{Float64}}
+    numElem::Vector{Int}
+end
+
 function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
     bc0 = name, ux, uy, uz
     return bc0
@@ -187,7 +192,7 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
 end
 
 # Tömeg mátrix felépítése
-function massMatrix(problem, PhGname; ρ=1im)
+function massMatrix(problem; PhGname="", ρ=1im)
     if ρ == 1im
         ρ = problem.ρ
     end
@@ -380,8 +385,8 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
         #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
         if ux != 1im
             nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 2
+            nodeTagsX *= pdim
+            nodeTagsX .-= (pdim - 1)
             f0 = spzeros(dof, length(nodeTagsX))
             f0 = stiffMat[:, nodeTagsX] * ux
             f0 = sum(f0, dims=2)
@@ -389,8 +394,8 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
         end
         if uy != 1im
             nodeTagsX = copy(nodeTags)
-            nodeTagsX *= 3
-            nodeTagsX .-= 1
+            nodeTagsX *= pdim
+            nodeTagsX .-= (pdim - 2)
             f0 = spzeros(dof, length(nodeTagsX))
             f0 = stiffMat[:, nodeTagsX] * uy
             f0 = sum(f0, dims=2)
@@ -468,6 +473,48 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
     return stiffMat, massMat, dampMat, fp
 end
 
+function initialDisplacement!(problem, name, u0; ux=1im, uy=1im, uz=1im)
+    dim = problem.dim
+    phg = getTagForPhysicalName(name)
+    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
+    if ux != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim-(dim-1)] = ux
+        end
+    end
+    if uy != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim-(dim-2)] = uy
+        end
+    end
+    if dim == 3 && uz != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim] = uz
+        end
+    end
+end
+
+function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
+    dim = problem.dim
+    phg = getTagForPhysicalName(name)
+    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
+    if vx != 1im
+        for i in 1:length(nodeTags)
+            v0[nodeTags[i]*dim-(dim-1)] = vx
+        end
+    end
+    if vy != 1im
+        for i in 1:length(nodeTags)
+            v0[nodeTags[i]*dim-(dim-2)] = vy
+        end
+    end
+    if dim == 3 && vz != 1im
+        for i in 1:length(nodeTags)
+            v0[nodeTags[i]*dim] = vz
+        end
+    end
+end
+
 function smallestPeriodTime(K, M)
     #using SymRCM
     #perm = symrcm(K)
@@ -487,7 +534,7 @@ function smallestPeriodTime(K, M)
     return Δt
 end
 
-function CDM(K, M, C, T, Δt)
+function CDM(K, M, C, f, u0, v0, T, Δt)
     invM = spdiagm(1 ./ diag(M))
     nsteps = ceil(Int64, T / Δt)
     dof, dof = size(K)
@@ -500,15 +547,15 @@ function CDM(K, M, C, T, Δt)
     sene = zeros(nsteps)
     diss = zeros(nsteps)
 
-    f = zeros(dof)
-    u0 = zeros(dof)
-    v0 = zeros(dof)
-    v0[1:2:dof] .= 1000
+    #f = zeros(dof)
+    #u0 = zeros(dof)
+    #v0 = zeros(dof)
+    #v0[1:2:dof] .= 1000
 
-    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, 1) #dimTag
-    nodeTags *= 2
-    nodeTags .-= 1
-    v0[nodeTags] .= 0
+    #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, 1) #dimTag
+    #nodeTags *= 2
+    #nodeTags .-= 1
+    #v0[nodeTags] .= 0
     a0 = M \ (f - K * u0 - C * v0)
     u00 = u0 - v0 * Δt + a0 * Δt^2 / 2
 
@@ -663,10 +710,11 @@ function solveStress(problem, q)
             push!(σ, s)
         end
     end
-    return σ, numElem
+    sigma = StressField(σ, numElem)
+    return sigma
 end
 
-function showDisplacementResults(problem, q, comp; name="u", visible=false)
+function showDoFResults(problem, q, comp; t=[0.0], name="u", visible=false)
     gmsh.model.setCurrent(problem.name)
     dim = problem.dim
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
@@ -674,35 +722,40 @@ function showDisplacementResults(problem, q, comp; name="u", visible=false)
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, -1, true)
     non = length(nodeTags)
     uvec = gmsh.view.add(name)
-    k = 1im
-    if comp == "uvec"
-        #ucomp = σ
-        nc = 3
-        u = zeros(3 * non)
-        for i in 1:length(nodeTags)
-            u[3i-2] = q[dim*nodeTags[i]-(dim-1)]
-            u[3i-1] = q[dim*nodeTags[i]-(dim-2)]
-            u[3i-0] = dim == 3 ? q[dim*nodeTags[i]-(dim-3)] : 0
+    if size(q, 2) != length(t)
+        error("showDoFResults: number of time steps missmatch ($(size(q,2)) <==> $(length(t))).")
+    end
+    for j in 1:length(t)
+        k = 1im
+        if comp == "uvec" || comp == "vvec"
+            #ucomp = σ
+            nc = 3
+            u = zeros(3 * non)
+            for i in 1:length(nodeTags)
+                u[3i-2] = q[dim*nodeTags[i]-(dim-1), j]
+                u[3i-1] = q[dim*nodeTags[i]-(dim-2), j]
+                u[3i-0] = dim == 3 ? q[dim*nodeTags[i]-(dim-3), j] : 0
+            end
+        else #if comp != "uvec"
+            nc = 1
+            if comp == "ux" || comp == "vx"
+                k = 1
+            elseif comp == "uy" || comp == "vy"
+                k = 2
+            elseif comp == "uz" || comp == "vz"
+                k = 3
+            else
+                error("ShowDisplacementResults: component is $comp ????")
+            end
+            u = zeros(non)
+            for i in 1:length(nodeTags)
+                u[i] = dim == 2 && k == 3 ? 0 : q[dim*nodeTags[i]-(dim-k)]
+            end
         end
-    elseif comp != "uvec" # else?
-        nc = 1
-        if comp == "ux"
-            k = 1
-        elseif comp == "uy"
-            k = 2
-        elseif comp == "uz"
-            k = 3
-        else
-            error("ShowDisplacementResults: component is $comp ????")
-        end
-        u = zeros(non)
-        for i in 1:length(nodeTags)
-            u[i] = dim == 2 && k == 3 ? 0 : q[dim*nodeTags[i]-(dim-k)]
-        end
+        gmsh.view.addHomogeneousModelData(uvec, j-1, problem.name, "NodeData", nodeTags, u, t[j], nc)
     end
 
-    gmsh.view.addHomogeneousModelData(uvec, 0, problem.name, "NodeData", nodeTags, u, 0, nc)
-
+    gmsh.view.option.setNumber(uvec, "DisplacementFactor", 0)
     gmsh.view.option.setNumber(uvec, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uvec, "TargetError", -1e-4)
     gmsh.view.option.setNumber(uvec, "MaxRecursionLevel", 1) # order + 1
@@ -713,48 +766,56 @@ function showDisplacementResults(problem, q, comp; name="u", visible=false)
     return uvec
 end
 
-function showStressResults(problem, S, comp; name="σ", visible=false, smooth=true)
+function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, smooth=true)
     gmsh.model.setCurrent(problem.name)
     dim = problem.dim
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    σ, numElem = S
-    S = gmsh.view.add(name)
-    k = 1im
-    if comp == "s"
-        σcomp = σ
-        nc = 9
-    else
+    #if length(S) != length(t)
+    #    error("showStressResults: number of time steps missmatch ($(length(S)) <==> $(length(t))).")
     #end
-    #if comp != "s"
-        nc = 1
-        if comp == "sx"
-            k = 8
-        elseif comp == "sy"
-            k = 4
-        elseif comp == "sz"
-            k = 0
-        elseif comp == "sxy" || comp == "syx"
-            k = 7
-        elseif comp == "syz" || comp == "szy"
-            k = 3
-        elseif comp == "szx" || comp == "sxz"
-            k = 6
-        else
-            error("ShowStressResults: component is $comp ????")
-        end
-        σcomp = []
-        sizehint!(σcomp, length(numElem))
-        for i in 1:length(σ)
-            sx = zeros(div(length(σ[i]), 9))
-            for j in 1:(div(length(σ[i]), 9))
-                sx[j] = σ[i][9j-k]
-            end
-            push!(σcomp, sx)
-        end
-    end
+    for j in 1:length(t)
+        #σ = S[j].sigma
+        #numElem = S[j].numElem
+        σ = S.sigma
+        numElem = S.numElem
 
-    gmsh.view.addModelData(S, 0, problem.name, "ElementNodeData", numElem, σcomp, 0, nc)
+        S = gmsh.view.add(name)
+        k = 1im
+        if comp == "s"
+            σcomp = σ
+            nc = 9
+        else
+            #end
+            #if comp != "s"
+            nc = 1
+            if comp == "sx"
+                k = 8
+            elseif comp == "sy"
+                k = 4
+            elseif comp == "sz"
+                k = 0
+            elseif comp == "sxy" || comp == "syx"
+                k = 7
+            elseif comp == "syz" || comp == "szy"
+                k = 3
+            elseif comp == "szx" || comp == "sxz"
+                k = 6
+            else
+                error("ShowStressResults: component is $comp ????")
+            end
+            σcomp = []
+            sizehint!(σcomp, length(numElem))
+            for i in 1:length(σ)
+                sx = zeros(div(length(σ[i]), 9))
+                for j in 1:(div(length(σ[i]), 9))
+                    sx[j] = σ[i][9j-k]
+                end
+                push!(σcomp, sx)
+            end
+        end
+        gmsh.view.addModelData(S, j-1, problem.name, "ElementNodeData", numElem, σcomp, t[j], nc)
+    end
 
     if smooth == true
         gmsh.plugin.setNumber("Smooth", "View", -1)
@@ -820,37 +881,6 @@ function plotOnPath(problem, pathName, field, points; numOfStep=0, name="path", 
         gmsh.view.option.setNumber(pathView, "Visible", 0)
     end
     return pathView
-end
-
-function showResultsVTvec(problem, v, t; name="v(t)", visible=false)
-    gmsh.model.setCurrent(problem.name)
-    dim = problem.dim
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
-    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
-    non = length(nodeTags)
-    vvec = gmsh.view.add(name)
-    gmsh.option.setNumber("View.DisplacementFactor", 0)
-    vv = zeros(3 * non)
-    dof, nsteps = size(v)
-    for j in 1:nsteps
-        for i in 1:length(nodeTags)
-            vv[3i-2] = v[dim*nodeTags[i]-(dim-1), j]
-            vv[3i-1] = v[dim*nodeTags[i]-(dim-2), j]
-            vv[3i-0] = dim == 3 ? v[dim*nodeTags[i]-0, j] : 0
-        end
-        gmsh.view.addHomogeneousModelData(vvec, j - 1, "rectangle", "NodeData", nodeTags, vv, t[j], 3)
-    end
-    
-    gmsh.view.option.setNumber(vvec, "NormalRaise", 0.03)
-    gmsh.view.option.setNumber(vvec, "DisplacementFactor", 0)
-    gmsh.view.option.setNumber(vvec, "AdaptVisualizationGrid", 1)
-    gmsh.view.option.setNumber(vvec, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(vvec, "MaxRecursionLevel", 1)
-    if visible == false
-        gmsh.view.option.setNumber(vvec, "Visible", 0)
-    end
-    return vvec
 end
 
 end #module
