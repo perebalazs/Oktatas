@@ -27,8 +27,9 @@ struct Problem
 end
 
 struct StressField
-    sigma::Vector{Vector{Float64}}
+    sigma::Vector{Matrix{Float64}}
     numElem::Vector{Int}
+    nsteps::Int
 end
 
 function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
@@ -335,9 +336,6 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                     for k in 1:numNodes
                         for l in 1:pdim
                             H[j*pdim-(pdim-l), k*pdim-(pdim-l)] = h[k, j]
-                            #H[j*3-2, k*3-2] = h[k, j]
-                            #H[j*3-1, k*3-1] = h[k, j]
-                            #H[j*3-0, k*3-0] = h[k, j]
                         end
                     end
                 end
@@ -617,26 +615,24 @@ function solveStress(problem, q)
         error("stiffnessMatrixSolid: dimension is $(problem.dim), problem type is $(problem.type).")
     end
 
+    nsteps = size(q, 2)
+    σ = []
+
     gmsh.model.setCurrent(problem.name)
     # csomópontok sorszámának lekérése
     #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
     # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     numElem = Int[]
-    σ = Vector{Float64}[]
-    #σx = Vector{Float64}[]
-    #σy = Vector{Float64}[]
-    #σxy = Vector{Float64}[]
+    #σ = Vector{Float64}[]
+    ##σx = Vector{Float64}[]
+    ##σy = Vector{Float64}[]
+    ##σxy = Vector{Float64}[]
     for i in 1:length(elemTypes)
         et = elemTypes[i]
         elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(et)
         s0 = zeros(rowsOfB * numNodes) # csak SA és ÁSF feladatnál, FSZ-nél már 4 kell
         nodeCoord = zeros(numNodes * 3)
-        #display("size of nodeCoord: $(size(nodeCoord))")
-        #display("size of localNodeCoord: $(size(localNodeCoord))")
-        #display("elemType = $et")
-        #display("dim = $dim")
-        #display("numNodes = $numNodes")
         for k in 1:dim, j = 1:numNodes
             nodeCoord[k+(j-1)*3] = localNodeCoord[k+(j-1)*dim]
         end
@@ -653,7 +649,6 @@ function solveStress(problem, q)
                 nnet[j, k] = elemNodeTags[i][(j-1)*numNodes+k]
             end
             jac, jacDet, coord = gmsh.model.mesh.getJacobian(elem, nodeCoord)
-            #display("size of jac: $(size(jac))")
             Jac = reshape(jac, 3, :)
             for k in 1:numNodes
                 invJac[1:3, 3*k-2:3*k] = inv(Jac[1:3, 3*k-2:3*k])'
@@ -681,28 +676,24 @@ function solveStress(problem, q)
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
-            #nn2[1:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 2
-            #nn2[2:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 1
-            #nn2[3:3:3*numNodes] = 3 * nnet[j, 1:numNodes]
-            #nn2[1:2:2*numNodes] = 2 * nnet[j, 1:numNodes] .- 1
-            #nn2[2:2:2*numNodes] = 2 * nnet[j, 1:numNodes]
-            s = zeros(9numNodes) # tenzornak 9 eleme van
-            #sx = zeros(numNodes)
-            #sy = zeros(numNodes)
-            #sxy = zeros(numNodes)
+            s = zeros(9numNodes, nsteps) # tenzornak 9 eleme van
             for k in 1:numNodes
                 if rowsOfB == 6 && dim == 3
                     B1 = B[k*6-5:k*6, 1:3*numNodes]
-                    s0 = D * B1 * q[nn2]
-                    s[(k-1)*9+1:k*9] = [s0[1], s0[4], s0[6],
-                                        s0[4], s0[2], s0[5],
-                                        s0[6], s0[5], s0[3]]
+                    for kk in 1:nsteps
+                        s0 = D * B1 * q[nn2, kk]
+                        s[(k-1)*9+1:k*9, kk] = [s0[1], s0[4], s0[6],
+                            s0[4], s0[2], s0[5],
+                            s0[6], s0[5], s0[3]]
+                    end
                 elseif rowsOfB == 3 && dim == 2 && problem.type == "PlaneStress"
                     B1 = B[k*3-2:k*3, 1:2*numNodes]
-                    s0 = D * B1 * q[nn2]
-                    s[(k-1)*9+1:k*9] = [s0[1], s0[3], 0,
-                                        s0[3], s0[2], 0,
-                                         0   ,  0   , 0]
+                    for kk in 1:nsteps
+                        s0 = D * B1 * q[nn2, kk]
+                        s[(k-1)*9+1:k*9, kk] = [s0[1], s0[3], 0,
+                            s0[3], s0[2], 0,
+                            0, 0, 0]
+                    end
                 else
                     error("solveStress: rowsOfB is $rowsOfB, dimension of the problem is $dim, problem type is $(problem.type).")
                 end
@@ -710,7 +701,7 @@ function solveStress(problem, q)
             push!(σ, s)
         end
     end
-    sigma = StressField(σ, numElem)
+    sigma = StressField(σ, numElem, nsteps)
     return sigma
 end
 
@@ -771,19 +762,23 @@ function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, 
     dim = problem.dim
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
-    #if length(S) != length(t)
-    #    error("showStressResults: number of time steps missmatch ($(length(S)) <==> $(length(t))).")
-    #end
-    for j in 1:length(t)
+    if S.nsteps != length(t)
+        error("showStressResults: number of time steps missmatch ($(S.nsteps) <==> $(length(t))).")
+    end
+    SS = gmsh.view.add(name)
+    #σcomp = []
+    σ = S.sigma
+    #display("length(σ) = $(length(σ))")
+    #display("length(σ[1]) = $(length(σ[1]))")
+    #display("length(σ[1][1]) = $(length(σ[1][1]))")
+    numElem = S.numElem
+    for jj in 1:length(t)
         #σ = S[j].sigma
         #numElem = S[j].numElem
-        σ = S.sigma
-        numElem = S.numElem
 
-        S = gmsh.view.add(name)
         k = 1im
         if comp == "s"
-            σcomp = σ
+            σcomp = [σ[i][:,jj] for i in 1:length(S.numElem)]
             nc = 9
         else
             #end
@@ -806,15 +801,20 @@ function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, 
             end
             σcomp = []
             sizehint!(σcomp, length(numElem))
-            for i in 1:length(σ)
-                sx = zeros(div(length(σ[i]), 9))
-                for j in 1:(div(length(σ[i]), 9))
-                    sx[j] = σ[i][9j-k]
+            for i in 1:length(S.numElem)
+                sx = zeros(div(size(σ[i], 1), 9))
+                for j in 1:(div(size(σ[i], 1), 9))
+                    sx[j] = σ[i][9j-k, jj]
                 end
+                #display("sx = $sx")
                 push!(σcomp, sx)
             end
         end
-        gmsh.view.addModelData(S, j-1, problem.name, "ElementNodeData", numElem, σcomp, t[j], nc)
+        #display("length(σ) = $(length(σ))")
+        #display("length(numElem) = $(length(numElem))")
+        #display("length(σcomp) = $(length(σcomp))")
+        #display("σcomp = $(σcomp)")
+        gmsh.view.addModelData(SS, jj-1, problem.name, "ElementNodeData", numElem, σcomp, t[jj], nc)
     end
 
     if smooth == true
@@ -822,14 +822,14 @@ function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, 
         gmsh.plugin.run("Smooth")
     end
 
-    gmsh.view.option.setNumber(S, "AdaptVisualizationGrid", 1)
-    gmsh.view.option.setNumber(S, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(S, "MaxRecursionLevel", 1)
+    gmsh.view.option.setNumber(SS, "AdaptVisualizationGrid", 1)
+    gmsh.view.option.setNumber(SS, "TargetError", -1e-4)
+    gmsh.view.option.setNumber(SS, "MaxRecursionLevel", 1)
     if visible == false
-        gmsh.view.option.setNumber(S, "Visible", 0)
+        gmsh.view.option.setNumber(SS, "Visible", 0)
     end
     display("$comp..ok")
-    return S
+    return SS
 end
 
 function plotOnPath(problem, pathName, field, points; numOfStep=0, name="path", visible=false)
