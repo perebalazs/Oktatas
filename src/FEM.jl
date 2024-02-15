@@ -12,7 +12,8 @@ struct Problem
     ν::Float64
     ρ::Float64
     thickness::Float64
-    function Problem(name; E=2e5, ν=0.3, ρ=7.85e-9, thickness=1, type="Solid")
+    non::Int64
+    function Problem(; E=2e5, ν=0.3, ρ=7.85e-9, thickness=1, type="Solid")
         if type == "Solid"
             dim = 3
         elseif type == "PlaneStress"
@@ -22,7 +23,10 @@ struct Problem
         else
             error("Problem = $problem ????")
         end
-        return new(name, type, dim, E, ν, ρ, thickness)
+        name = gmsh.model.getCurrent()
+        nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes(dim, -1, true)
+        non = length(nodeTags)
+        return new(name, type, dim, E, ν, ρ, thickness, non)
     end
 end
 
@@ -37,7 +41,7 @@ function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
     return bc0
 end
 
-function traction(name; fx=0, fy=0, fz=0)
+function load(name; fx=0, fy=0, fz=0)
     ld0 = name, fx, fy, fz
     return ld0
 end
@@ -179,21 +183,21 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
-            #nn2[1:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 2
-            #nn2[2:3:3*numNodes] = 3 * nnet[j, 1:numNodes] .- 1
-            #nn2[3:3:3*numNodes] = 3 * nnet[j, 1:numNodes]
             append!(I, nn2[Iidx[:]])
             append!(J, nn2[Jidx[:]])
             append!(V, K1[:])
         end
         push!(nn, nnet)
     end
-    K = sparse(I, J, V)
+    nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes(problem.dim, -1, true)
+    non = length(nodeTags)
+    dof = problem.dim * non
+    K = sparse(I, J, V, dof, dof)
     return K
 end
 
 # Tömeg mátrix felépítése
-function massMatrix(problem; PhGname="", ρ=1im)
+function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
     if ρ == 1im
         ρ = problem.ρ
     end
@@ -265,27 +269,41 @@ function massMatrix(problem; PhGname="", ρ=1im)
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
-            #nn2[1:2:2*numNodes] = 2 * nnet[j, 1:numNodes] .- 1
-            #nn2[2:2:2*numNodes] = 2 * nnet[j, 1:numNodes]
             append!(I, nn2[Iidx[:]])
             append!(J, nn2[Jidx[:]])
             append!(V, M1[:])
         end
         push!(nn, nnet)
     end
-    M = sparse(I, J, V)
+    nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes(problem.dim, -1, true)
+    non = length(nodeTags)
+    dof = problem.dim * non
+    M = sparse(I, J, V, dof, dof)
+    if lumped == true
     M = spdiagm(vec(sum(M, dims=2))) # lumped mass matrix
+    end
     return M
 end
 
-function applyBoundaryConditions!(problem, stiffMat, supports, tractions)
+function applyBoundaryConditions!(problem, stiffMat, loadVec, supports)
     dof, dof = size(stiffMat)
     massMat = spzeros(dof, dof)
     dampMat = spzeros(dof, dof)
-    stiffMat0, massMat, dampMat, fp = applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports, tractions)
+    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
     massMat = []
     dampMat = []
-    return stiffMat0, fp
+end
+
+function applyBoundaryConditions(problem, stiffMat0, loadVec0, supports)
+    dof, dof = size(stiffMat0)
+    massMat = spzeros(dof, dof)
+    dampMat = spzeros(dof, dof)
+    stiffMat = copy(stiffMat0)
+    loadVec = copy(loadVec0)
+    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
+    massMat = []
+    dampMat = []
+    return stiffMat, loadVec
 end
 
 function getTagForPhysicalName(name)
@@ -301,13 +319,16 @@ function getTagForPhysicalName(name)
     return dimTags[i][2]
 end
 
-function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports, tractions)
+function loadVector(problem, loads)
     gmsh.model.setCurrent(problem.name)
-    dof, dof = size(stiffMat)
     pdim = problem.dim
+    b = problem.thickness
+    nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes(pdim, -1, true)
+    non = length(nodeTags)
+    dof = pdim * non
     fp = zeros(dof)
-    for n in 1:length(tractions)
-        name, fx, fy, fz = tractions[n]
+    for n in 1:length(loads)
+        name, fx, fy, fz = loads[n]
         if problem.dim == 3
             f = [fx, fy, fz]
         elseif problem.dim == 2
@@ -315,7 +336,6 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
         else
             error("applyBoundaryConditions: dimension of the problem is $(problem.dim).")
         end
-        #tags = gmsh.model.getEntitiesForPhysicalGroup(2, phg)
         dimTags = gmsh.model.getEntitiesForPhysicalName(name)
         for i ∈ 1:length(dimTags)
             dimTag = dimTags[i]
@@ -355,8 +375,11 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                             zx = Jac[3, 3*j-2] * Jac[1, 3*j-1] - Jac[1, 3*j-2] * Jac[3, 3*j-1]
                             Ja = √(xy^2 + yz^2 + zx^2)
                         elseif pdim == 2 && dim == 1
-                            Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2)
-                            # Ide lehetne rakni még a térfogati terhelést is?
+                            Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2) * b
+                        elseif pdim == 2 && dim == 2
+                            Ja = jacDet[j]
+                        elseif pdim == 3 && dim == 3
+                            Ja = jacDet[j]
                         else
                             error("applyBoundaryConditions: dimension of the problem is $(problem.dim), dimension of load is $dim.")
                         end
@@ -364,54 +387,53 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                     end
                     for k in 1:pdim
                         nn2[k:pdim:pdim*numNodes] = pdim * nnoe[l, 1:numNodes] .- (pdim - k)
-                        #nn2[1:3:3*numNodes] = 3 * nnoe[l, 1:numNodes] .- 2
-                        #nn2[2:3:3*numNodes] = 3 * nnoe[l, 1:numNodes] .- 1
-                        #nn2[3:3:3*numNodes] = 3 * nnoe[l, 1:numNodes]
                     end
                     fp[nn2] += f1
                 end
             end
         end
     end
+    return fp
+end
+
+function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
+    gmsh.model.setCurrent(problem.name)
+    dof, dof = size(stiffMat)
+    pdim = problem.dim
 
     for i in 1:length(supports)
         name, ux, uy, uz = supports[i]
-        #display(name)
         phg = getTagForPhysicalName(name)
         nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
-        #phg, ux, uy = supports[i]
-        #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
         if ux != 1im
             nodeTagsX = copy(nodeTags)
             nodeTagsX *= pdim
             nodeTagsX .-= (pdim - 1)
-            f0 = spzeros(dof, length(nodeTagsX))
+            #f0 = spzeros(dof, length(nodeTagsX)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsX] * ux
             f0 = sum(f0, dims=2)
-            fp -= f0
+            loadVec .-= f0
         end
         if uy != 1im
             nodeTagsX = copy(nodeTags)
             nodeTagsX *= pdim
             nodeTagsX .-= (pdim - 2)
-            f0 = spzeros(dof, length(nodeTagsX))
+            #f0 = spzeros(dof, length(nodeTagsX)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsX] * uy
             f0 = sum(f0, dims=2)
-            fp -= f0
+            loadVec .-= f0
         end
         if pdim == 3 && uz != 1im
             nodeTagsY = copy(nodeTags)
             nodeTagsY *= 3
-            f0 = spzeros(dof, length(nodeTagsY))
+            #f0 = spzeros(dof, length(nodeTagsY)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsY] * uz
             f0 = sum(f0, dims=2)
-            fp -= f0
+            loadVec .-= f0
         end
     end
 
     for i in 1:length(supports)
-        #phg, ux, uy = supports[i]
-        #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, phg)
         name, ux, uy, uz = supports[i]
         phg = getTagForPhysicalName(name)
         nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
@@ -429,7 +451,7 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                 dampMat[j, :] .= 0
                 dampMat[:, j] .= 0
                 dampMat[j, j] = 1
-                fp[j] = ux
+                loadVec[j] = ux
             end
         end
         if uy != 1im
@@ -446,7 +468,7 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                 dampMat[j, :] .= 0
                 dampMat[:, j] .= 0
                 dampMat[j, j] = 1
-                fp[j] = uy
+                loadVec[j] = uy
             end
         end
         if pdim == 3 && uz != 1im
@@ -462,13 +484,14 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, supports,
                 dampMat[j, :] .= 0
                 dampMat[:, j] .= 0
                 dampMat[j, j] = 1
-                fp[j] = uz
+                loadVec[j] = uz
             end
         end
     end
 
     dropzeros!(stiffMat)
-    return stiffMat, massMat, dampMat, fp
+    dropzeros!(massMat)
+    dropzeros!(dampMat)
 end
 
 function initialDisplacement!(problem, name, u0; ux=1im, uy=1im, uz=1im)
@@ -493,6 +516,19 @@ function initialDisplacement!(problem, name, u0; ux=1im, uy=1im, uz=1im)
 end
 
 function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
+    initialDisplacement!(problem, name, v0, ux=vx, uy=vy, uz=vz)
+end
+
+function nodalForce!(problem, name, f0; fx=1im, fy=1im, fz=1im)
+    initialDisplacement!(problem, name, f0, ux=fx, uy=fy, uz=fz)
+end
+
+function nodalAcceleration!(problem, name, a0; ax=1im, ay=1im, az=1im)
+    initialDisplacement!(problem, name, a0, ux=ax, uy=ay, uz=az)
+end
+
+#=
+function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
     dim = problem.dim
     phg = getTagForPhysicalName(name)
     nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
@@ -512,6 +548,7 @@ function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
         end
     end
 end
+=#
 
 function smallestPeriodTime(K, M)
     #using SymRCM
