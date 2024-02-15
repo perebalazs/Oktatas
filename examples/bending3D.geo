@@ -1,7 +1,6 @@
 //+
 SetFactory("OpenCASCADE");
 Box(1) = {0, 0, 0, 100, 10, 10};
-//Box(2) = {20, 0, 0, 10, 10, 10};
 //+
 Physical Surface("supp", 13) = {1};
 //+
@@ -9,11 +8,12 @@ Physical Surface("load", 14) = {2};
 //+
 Physical Volume("body", 15) = {1};
 
-//+
-//MeshSize {3, 7, 8, 4, 5, 6, 2, 1} = 10;
-MeshSize {1:8} = 10;
+Recombine Surface {1:6};
+Transfinite Line {1:8} = 4;
+Transfinite Line {9:12} = 31;
+Transfinite Surface {1:6};
+Transfinite Volume {1};
 Mesh.ElementOrder = 3;
-//Mesh.HighOrderOptimize = 2;
 
 SetName "bending3D";
 Mesh 3;

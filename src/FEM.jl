@@ -130,7 +130,7 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
     for i in 1:length(elemTypes)
         et = elemTypes[i]
         elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(et)
-        intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(et, "Gauss" * string(2order))
+        intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(et, "Gauss" * string(2order+1))
         numIntPoints = length(intWeights)
         comp, dfun, ori = gmsh.model.mesh.getBasisFunctions(et, intPoints, "GradLagrange")
         ∇h = reshape(dfun, :, numIntPoints)
@@ -178,7 +178,7 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
             K1 *= 0
             for k in 1:numIntPoints
                 B1 = B[k*rowsOfB-(rowsOfB-1):k*rowsOfB, 1:dim*numNodes]
-                K1 += B1' * D * B1 * jacDet[k] * intWeights[k]
+                K1 += B1' * D * B1 * b * jacDet[k] * intWeights[k]
             end
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
@@ -235,7 +235,7 @@ function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
     for i in 1:length(elemTypes)
         et = elemTypes[i]
         elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(et)
-        intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(et, "Gauss" * string(2order))
+        intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(et, "Gauss" * string(2order+1))
         numIntPoints = length(intWeights)
         comp, fun, ori = gmsh.model.mesh.getBasisFunctions(et, intPoints, "Lagrange")
         h = reshape(fun, :, numIntPoints)
@@ -265,7 +265,7 @@ function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
                 H1 = H[k*dim-(dim-1):k*dim, 1:dim*numNodes]
                 M1 += H1' * H1 * jacDet[k] * intWeights[k]
             end
-            M1 *= ρ
+            M1 *= ρ * b
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
@@ -345,12 +345,10 @@ function loadVector(problem, loads)
             for ii in 1:length(elementTypes)
                 elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elementTypes[ii])
                 nnoe = reshape(elemNodeTags[ii], numNodes, :)'
-                intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(elementTypes[ii], "Gauss" * string(order))
+                intPoints, intWeights = gmsh.model.mesh.getIntegrationPoints(elementTypes[ii], "Gauss" * string(order+1))
                 numIntPoints = length(intWeights)
                 comp, fun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[ii], intPoints, "Lagrange")
                 h = reshape(fun, :, numIntPoints)
-                #comp, dfun, ori = gmsh.model.mesh.getBasisFunctions(elementTypes[1], intPoints, "GradLagrange")
-                #∇h = reshape(dfun, :, numIntPoints)
                 H = zeros(pdim * numIntPoints, pdim * numNodes)
                 for j in 1:numIntPoints
                     for k in 1:numNodes
@@ -377,7 +375,7 @@ function loadVector(problem, loads)
                         elseif pdim == 2 && dim == 1
                             Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2) * b
                         elseif pdim == 2 && dim == 2
-                            Ja = jacDet[j]
+                            Ja = jacDet[j] * b
                         elseif pdim == 3 && dim == 3
                             Ja = jacDet[j]
                         else
@@ -527,29 +525,6 @@ function nodalAcceleration!(problem, name, a0; ax=1im, ay=1im, az=1im)
     initialDisplacement!(problem, name, a0, ux=ax, uy=ay, uz=az)
 end
 
-#=
-function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
-    dim = problem.dim
-    phg = getTagForPhysicalName(name)
-    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
-    if vx != 1im
-        for i in 1:length(nodeTags)
-            v0[nodeTags[i]*dim-(dim-1)] = vx
-        end
-    end
-    if vy != 1im
-        for i in 1:length(nodeTags)
-            v0[nodeTags[i]*dim-(dim-2)] = vy
-        end
-    end
-    if dim == 3 && vz != 1im
-        for i in 1:length(nodeTags)
-            v0[nodeTags[i]*dim] = vz
-        end
-    end
-end
-=#
-
 function smallestPeriodTime(K, M)
     #using SymRCM
     #perm = symrcm(K)
@@ -582,15 +557,6 @@ function CDM(K, M, C, f, u0, v0, T, Δt)
     sene = zeros(nsteps)
     diss = zeros(nsteps)
 
-    #f = zeros(dof)
-    #u0 = zeros(dof)
-    #v0 = zeros(dof)
-    #v0[1:2:dof] .= 1000
-
-    #nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(1, 1) #dimTag
-    #nodeTags *= 2
-    #nodeTags .-= 1
-    #v0[nodeTags] .= 0
     a0 = M \ (f - K * u0 - C * v0)
     u00 = u0 - v0 * Δt + a0 * Δt^2 / 2
 
