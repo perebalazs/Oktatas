@@ -4,6 +4,27 @@ using LinearAlgebra, SparseArrays
 using Arpack
 import gmsh
 
+"""
+    Problem(; E=..., ν=..., ρ=..., thickness=..., type=...)
+
+A structure containing the most important data of the problem. 
+- name of the model (in gmsh)
+- type of the problem: 3D "Solid", "PlaneStrain" or "PlaneStress"
+- dimension of the problem, determined from `type`
+- material constants: Young's modulus, Poisson's ratio, mass density
+- thickness of the plate
+- number of nodes (non)
+
+Types:
+- `name`: string
+- `type`: string
+- `dim`: Integer
+- `E`: double
+- `ν`: double
+- `ρ`: double
+- `thickness`: double
+- `non`: Integer
+"""
 struct Problem
     name::String
     type::String
@@ -30,24 +51,74 @@ struct Problem
     end
 end
 
+"""
+    StressField(sigma, numElem, nsteps)
+
+A structure containing the data of a stress field. 
+- sigma: vector of ElementNodeData type stress data (see gmsh.jl)
+- numElem: vector of tags of elements
+- nsteps: number of stress fields stored in sigma (for animations).
+
+Types:
+- `sigma`: Vector{Matrix{Float64}}
+- `numElem`: Vector{Integer}
+- `nsteps`: Integer
+"""
 struct StressField
     sigma::Vector{Matrix{Float64}}
     numElem::Vector{Int}
     nsteps::Int
 end
 
+"""
+    FEM.displacementConstraint(name; ux=..., uy=..., uz=...)
+
+Gives the displacement constraints on `name` physical group. At least one `ux`, 
+`uy` or `uz` value have to be given (depending on the dimension of the problem).
+
+Return: none
+
+Types:
+- `name`: string
+- `ux`: double
+- `uy`: double
+- `uz`: double
+"""
 function displacementConstraint(name; ux=1im, uy=1im, uz=1im)
     bc0 = name, ux, uy, uz
     return bc0
 end
 
+"""
+    FEM.load(name; fx=..., fy=..., fz=...)
+
+Gives the intensity of distributed load on `name` physical group. At least one `fx`, 
+`fy` or `fz` value have to be given (depending on the dimension of the problem).
+
+Return: none
+
+Types:
+- `name`: string
+- `ux`: double
+- `uy`: double
+- `uz`: double
+"""
 function load(name; fx=0, fy=0, fz=0)
     ld0 = name, fx, fy, fz
     return ld0
 end
 
 
-#Végeselemes felosztás elvégzése
+"""
+    FEM.generateMesh(...)
+
+Gives...
+
+Return: none
+
+Types:
+- ``: x
+"""
 function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadrangle=0, internalNodes=0)
     gmsh.model.setCurrent(problem.name)
     # lekérjük az összes csomópontot
@@ -76,7 +147,20 @@ function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadr
 end
 
 
-# Merevségi mátrix felépítése
+"""
+    FEM.stiffnessMatrix(problem; name, E=..., ν=...)
+
+Solves the stiffness matrix of the `problem`.
+
+Return: `stiffMat`
+
+Types:
+- `problem`: Problem
+- `name`: string - unused
+- `E`: double - unused
+- `ν`: double - unused
+- `stiffMat`: Matrix
+"""
 function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
     if E == 1im || ν == 1im
         E = problem.E
@@ -196,7 +280,20 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
     return K
 end
 
-# Tömeg mátrix felépítése
+"""
+    FEM.massMatrix(problem; name, ρ=..., lumped=...)
+
+Solves the mass matrix of the `problem`. If `lumped` is true, solves lumped mass matrix.
+
+Return: `massMat`
+
+Types:
+- `problem`: Problem
+- `name`: string - unused
+- `ρ`: double - unused
+- `lumped`: boolean
+- `massMat`: Matrix
+"""
 function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
     if ρ == 1im
         ρ = problem.ρ
@@ -285,40 +382,24 @@ function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
     return M
 end
 
-function applyBoundaryConditions!(problem, stiffMat, loadVec, supports)
-    dof, dof = size(stiffMat)
-    massMat = spzeros(dof, dof)
-    dampMat = spzeros(dof, dof)
-    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
-    massMat = []
-    dampMat = []
-end
+"""
+    FEM.loadVector(problem, loads)
 
-function applyBoundaryConditions(problem, stiffMat0, loadVec0, supports)
-    dof, dof = size(stiffMat0)
-    massMat = spzeros(dof, dof)
-    dampMat = spzeros(dof, dof)
-    stiffMat = copy(stiffMat0)
-    loadVec = copy(loadVec0)
-    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
-    massMat = []
-    dampMat = []
-    return stiffMat, loadVec
-end
+Solves a load vector of `problem`. `loads` is a tuple of name of physical group 
+`name`, coordinates `fx`, `fy` and `fz` of the intensity of distributed force.
+It can solve traction or body force depending on the problem.
+In case of 2D problems and Line physical group it means surface force.
+In case of 2D problems and Surface physical group it means body force.
+In case of 3D problems and Surface physical group it means surface force.
+In case of 3D problems and Volume physical group it means body force.
 
-function getTagForPhysicalName(name)
-    dimTags = gmsh.model.getPhysicalGroups(-1)
-    i = 1
-    while gmsh.model.getPhysicalName(dimTags[i][1], dimTags[i][2]) != name
-        i += 1
-        if i > length(dimTags)
-            error("Physical name '$name' does not exist.")
-        end
-    end
-    #display("$name $(dimTags[i])")
-    return dimTags[i][2]
-end
+Return: `loadVec`
 
+Types:
+- `problem`: Problem
+- `loads`: Tuple(string, double, double, double)
+- `loadVec`: Vector
+"""
 function loadVector(problem, loads)
     gmsh.model.setCurrent(problem.name)
     pdim = problem.dim
@@ -394,6 +475,99 @@ function loadVector(problem, loads)
     return fp
 end
 
+"""
+    FEM.applyBoundaryConditions!(problem, stiffMat, loadVec, supports)
+
+Applies displacement boundary conditions `supports` on a stiffness matrix
+`stiffMat` and load vector `loadVec`. Mesh details are in `problem`. `supports`
+is a tuple of `name` of physical group and prescribed displacements `ux`, `uy`
+and `uz`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `stiffMat`: Matrix 
+- `loadVec`: Vector 
+- `supports`: Tuple(string, double, double, double)
+"""
+function applyBoundaryConditions!(problem, stiffMat, loadVec, supports)
+    dof, dof = size(stiffMat)
+    massMat = spzeros(dof, dof)
+    dampMat = spzeros(dof, dof)
+    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
+    massMat = []
+    dampMat = []
+end
+
+"""
+    FEM.applyBoundaryConditions(problem, stiffMat, loadVec, supports)
+
+Applies displacement boundary conditions `supports` on a stiffness matrix
+`stiffMat` and load vector `loadVec`. Mesh details are in `problem`. `supports`
+is a tuple of `name` of physical group and prescribed displacements `ux`, `uy`
+and `uz`. Creates a new stiffness matrix and load vector.
+
+Return: `stiffMat`, `loadVec`
+
+Types:
+- `problem`: Problem
+- `stiffMat`: Matrix 
+- `loadVec`: Vector 
+- `supports`: Tuple(string, double, double, double)
+"""
+function applyBoundaryConditions(problem, stiffMat0, loadVec0, supports)
+    dof, dof = size(stiffMat0)
+    massMat = spzeros(dof, dof)
+    dampMat = spzeros(dof, dof)
+    stiffMat = copy(stiffMat0)
+    loadVec = copy(loadVec0)
+    applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
+    massMat = []
+    dampMat = []
+    return stiffMat, loadVec
+end
+
+"""
+    FEM.getTagForPhysicalName(name)
+
+Returns `tags` of elements of physical group `name`.
+
+Return: `tags`
+
+Types:
+- `name`: string
+- `tags`: vector of integers
+"""
+function getTagForPhysicalName(name)
+    dimTags = gmsh.model.getPhysicalGroups(-1)
+    i = 1
+    while gmsh.model.getPhysicalName(dimTags[i][1], dimTags[i][2]) != name
+        i += 1
+        if i > length(dimTags)
+            error("Physical name '$name' does not exist.")
+        end
+    end
+    #display("$name $(dimTags[i])")
+    return dimTags[i][2]
+end
+
+"""
+    FEM.applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
+
+Applies displacement boundary conditions `supports` on a stiffness matrix
+`stiffMat`, mass matrix `massMat`, damping matrix `dampMat` and load vector `loadVec`.
+Mesh details are in `problem`. `supports` is a tuple of `name` of physical group and
+prescribed displacements `ux`, `uy` and `uz`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `stiffMat`: Matrix 
+- `loadVec`: Vector 
+- `supports`: Tuple(string, double, double, double)
+"""
 function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, supports)
     gmsh.model.setCurrent(problem.name)
     dof, dof = size(stiffMat)
@@ -492,100 +666,37 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, 
     dropzeros!(dampMat)
 end
 
-function initialDisplacement!(problem, name, u0; ux=1im, uy=1im, uz=1im)
-    dim = problem.dim
-    phg = getTagForPhysicalName(name)
-    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
-    if ux != 1im
-        for i in 1:length(nodeTags)
-            u0[nodeTags[i]*dim-(dim-1)] = ux
-        end
-    end
-    if uy != 1im
-        for i in 1:length(nodeTags)
-            u0[nodeTags[i]*dim-(dim-2)] = uy
-        end
-    end
-    if dim == 3 && uz != 1im
-        for i in 1:length(nodeTags)
-            u0[nodeTags[i]*dim] = uz
-        end
-    end
-end
+"""
+    FEM.solveDisplacement(K, q)
 
-function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
-    initialDisplacement!(problem, name, v0, ux=vx, uy=vy, uz=vz)
-end
+Solves the equation K*q=f for the displacement vector `q`. `K` is the stiffness Matrix,
+`q` is the load vector.
 
-function nodalForce!(problem, name, f0; fx=1im, fy=1im, fz=1im)
-    initialDisplacement!(problem, name, f0, ux=fx, uy=fy, uz=fz)
-end
+Return: `q`
 
-function nodalAcceleration!(problem, name, a0; ax=1im, ay=1im, az=1im)
-    initialDisplacement!(problem, name, a0, ux=ax, uy=ay, uz=az)
-end
-
-function smallestPeriodTime(K, M)
-    #using SymRCM
-    #perm = symrcm(K)
-    #Kp = K[perm, perm]
-    #Mp = M[perm, perm]
-    #ω², ϕ = Arpack.eigs(Kp, Mp, nev=1, which=:LM)
-    #α = 1e10
-    #Ks = K - α * M
-    ω², ϕ = Arpack.eigs(K, M, nev=1, which=:LM)
-
-    #if norm(Kp * ϕ - λ²[1] * Mp * ϕ) > 1e-6
-    err = norm(K * ϕ[:,1] - ω²[1] * M * ϕ[:,1])
-    if err > 1#1e-6
-        error("Túl nagy a hiba a legnagyobb sajátérték számításánál: $err")
-    end
-    Δt = 2π / √(real(ω²[1]))
-    return Δt
-end
-
-function CDM(K, M, C, f, u0, v0, T, Δt)
-    invM = spdiagm(1 ./ diag(M))
-    nsteps = ceil(Int64, T / Δt)
-    dof, dof = size(K)
-
-    u = zeros(dof, nsteps)
-    v = zeros(dof, nsteps)
-    #p = zeros(nsteps)
-    t = zeros(nsteps)
-    kene = zeros(nsteps)
-    sene = zeros(nsteps)
-    diss = zeros(nsteps)
-
-    a0 = M \ (f - K * u0 - C * v0)
-    u00 = u0 - v0 * Δt + a0 * Δt^2 / 2
-
-    u[:, 1] = u0
-    v[:, 1] = v0
-    t[1] = 0
-    kene[1] = dot(v0' * M, v0) / 2
-    sene[1] = dot(u0' * K, u0) / 2
-
-    for i in 2:nsteps
-        u1 = 2.0 * u0 - u00 + Δt * Δt * invM * (f - K * u0) - Δt * invM * (C * (u0 - u00))
-        u[:, i] = u1
-        v1 = (u1 - u0) / Δt
-        v[:, i] = v1
-        t[i] = t[i-1] + Δt
-        kene[i] = dot(v1' * M, v1) / 2
-        sene[i] = dot(u1' * K, u1) / 2
-        #diss[i] = dot(v1' * C, v1)
-        u00 = u0
-        u0 = u1
-    end
-    return u, v, t
-end
-
+Types:
+- `K`: Matrix 
+- `f`: Vector 
+- `q`: Vector 
+"""
 function solveDisplacement(K, f)
     return K \ f
 end
 
-# Feszültségek számítása
+"""
+    FEM.solveStress(problem, q)
+
+Solves the stress field `S` from displacement vector `q`. Stress field is given
+per elements, so it usually contains jumps at the boundary of elements. Details
+of mesh is available in `problem`.
+
+Return: `S`
+
+Types:
+- `problem`: Problem
+- `q`: Vector
+- `S`: StressField
+"""
 function solveStress(problem, q)
     E = problem.E
     ν = problem.ν
@@ -708,11 +819,228 @@ function solveStress(problem, q)
     return sigma
 end
 
+"""
+    FEM.initialDisplacement!(problem, name, u0; ux=..., uy=..., uz=...)
+
+Changes the displacement values `ux`, `uy` and `uz` (depending on the dimension of
+the `problem`) at nodes belonging to physical group `name`. Original values are in
+displacement vector `u0`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `name`: string 
+- `u0`: Vector 
+- `ux`: Double 
+- `uy`: Double 
+- `uz`: Double 
+"""
+function initialDisplacement!(problem, name, u0; ux=1im, uy=1im, uz=1im)
+    dim = problem.dim
+    phg = getTagForPhysicalName(name)
+    nodeTags, coord = gmsh.model.mesh.getNodesForPhysicalGroup(-1, phg)
+    if ux != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim-(dim-1)] = ux
+        end
+    end
+    if uy != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim-(dim-2)] = uy
+        end
+    end
+    if dim == 3 && uz != 1im
+        for i in 1:length(nodeTags)
+            u0[nodeTags[i]*dim] = uz
+        end
+    end
+end
+
+"""
+    FEM.initialVelocity!(problem, name, v0; vx=..., vy=..., vz=...)
+
+Changes the velocity values `vx`, `vy` and `vz` (depending on the dimension of
+the `problem`) at nodes belonging to physical group `name`. Original values are in
+velocity vector `v0`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `name`: string 
+- `v0`: Vector 
+- `vx`: Double 
+- `vy`: Double 
+- `vz`: Double 
+"""
+function initialVelocity!(problem, name, v0; vx=1im, vy=1im, vz=1im)
+    initialDisplacement!(problem, name, v0, ux=vx, uy=vy, uz=vz)
+end
+
+"""
+    FEM.nodalForce!(problem, name, f0; fx=..., fy=..., fz=...)
+
+Changes the force values `fx`, `fy` and `fz` (depending on the dimension of
+the `problem`) at nodes belonging to physical group `name`. Original values are in
+load vector `f0`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `name`: string 
+- `f0`: Vector 
+- `fx`: Double 
+- `fy`: Double 
+- `fz`: Double 
+"""
+function nodalForce!(problem, name, f0; fx=1im, fy=1im, fz=1im)
+    initialDisplacement!(problem, name, f0, ux=fx, uy=fy, uz=fz)
+end
+
+"""
+    FEM.nodalAcceleration!(problem, name, a0; ax=..., ay=..., az=...)
+
+Changes the acceleration values `ax`, `ay` and `az` (depending on the dimension of
+the `problem`) at nodes belonging to physical group `name`. Original values are in
+acceleration vector `a0`.
+
+Return: none
+
+Types:
+- `problem`: Problem
+- `name`: string 
+- `a0`: Vector 
+- `ax`: Double 
+- `ay`: Double 
+- `az`: Double 
+"""
+function nodalAcceleration!(problem, name, a0; ax=1im, ay=1im, az=1im)
+    initialDisplacement!(problem, name, a0, ux=ax, uy=ay, uz=az)
+end
+
+"""
+    FEM.smallestPeriodTime(K, M)
+
+Solves the smallest period of time for a dynamic problem given by stiffness
+matrix `K` and the mass matrix `M`.`
+
+Return: `Δt`
+
+Types:
+- `K`: Matrix
+- `M`: Matrix
+- `Δt`: Double 
+"""
+function smallestPeriodTime(K, M)
+    #using SymRCM
+    #perm = symrcm(K)
+    #Kp = K[perm, perm]
+    #Mp = M[perm, perm]
+    #ω², ϕ = Arpack.eigs(Kp, Mp, nev=1, which=:LM)
+    #α = 1e10
+    #Ks = K - α * M
+    ω², ϕ = Arpack.eigs(K, M, nev=1, which=:LM)
+
+    #if norm(Kp * ϕ - λ²[1] * Mp * ϕ) > 1e-6
+    err = norm(K * ϕ[:,1] - ω²[1] * M * ϕ[:,1])
+    if err > 1#1e-6
+        error("Túl nagy a hiba a legnagyobb sajátérték számításánál: $err")
+    end
+    #Δt = 2π / √(real(ω²[1]))
+    Δt = 2π / √(real(abs(ω²[1])))
+    return Δt
+end
+
+"""
+    FEM.CDM(K, M, C, f, u0, v0, T, Δt)
+
+Solves a transient dynamic problem using central difference method (explicit).
+`K` is the stiffness Matrix, `M` is the mass matrix, `C` is the damping matrix,
+`f` is the load vector, `u0` is the initial displacement, `v0` is the initial
+velocity, `T` is the upper bound ot the time intervall (lower bound is zero)
+and `Δt` is the time step size. Returns the displacement vectors and velocity
+vectors in each time step arranged in the columns of the two matrices `u` and `v`
+and a vector `t` of the time instants used.
+
+Return: `u`, `v`, `t`
+
+Types:
+- `K`: Matrix
+- `M`: Matrix
+- `C`: Matrix
+- `f`: Vector
+- `u0`: Vector
+- `v0`: Vector
+- `T`: Double 
+- `Δt`: Double 
+- `u`: Matrix
+- `v`: Matrix
+- `t`: Vector
+"""
+function CDM(K, M, C, f, u0, v0, T, Δt)
+    invM = spdiagm(1 ./ diag(M))
+    nsteps = ceil(Int64, T / Δt)
+    dof, dof = size(K)
+
+    u = zeros(dof, nsteps)
+    v = zeros(dof, nsteps)
+    #p = zeros(nsteps)
+    t = zeros(nsteps)
+    kene = zeros(nsteps)
+    sene = zeros(nsteps)
+    diss = zeros(nsteps)
+
+    a0 = M \ (f - K * u0 - C * v0)
+    u00 = u0 - v0 * Δt + a0 * Δt^2 / 2
+
+    u[:, 1] = u0
+    v[:, 1] = v0
+    t[1] = 0
+    kene[1] = dot(v0' * M, v0) / 2
+    sene[1] = dot(u0' * K, u0) / 2
+
+    for i in 2:nsteps
+        u1 = 2.0 * u0 - u00 + Δt * Δt * invM * (f - K * u0) - Δt * invM * (C * (u0 - u00))
+        u[:, i] = u1
+        v1 = (u1 - u0) / Δt
+        v[:, i] = v1
+        t[i] = t[i-1] + Δt
+        kene[i] = dot(v1' * M, v1) / 2
+        sene[i] = dot(u1' * K, u1) / 2
+        #diss[i] = dot(v1' * C, v1)
+        u00 = u0
+        u0 = u1
+    end
+    return u, v, t
+end
+
+"""
+    FEM.showDoFResults(problem, q, comp; t=..., name=..., visible=...)
+
+Loads nodal results into a View in gmsh. `q` is the field to show, `comp` is
+the component of the field ("uvec", "ux", "uy", "uz", "vvec", "vx", "vy", "vz"),
+`t` is a vector of time steps (same number of columns as `q`), `name` is a
+title to display and `visible` is a true or false value to toggle on or off the 
+initial visibility in gmsh. If `q` has more columns, then a sequence of results
+will be shown (eg. as an animation). This function returns the tag of View.
+
+Return: `tag`
+
+Types:
+- `problem`: Problem
+- `q`: Vector or Matrix
+- `comp`: string
+- `t`: Vector
+- `name`: string
+- `visible`: Boolean
+"""
 function showDoFResults(problem, q, comp; t=[0.0], name="u", visible=false)
     gmsh.model.setCurrent(problem.name)
     dim = problem.dim
-    elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
-    elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
+    #elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
+    #elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(elemTypes[1])
     nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, -1, true)
     non = length(nodeTags)
     uvec = gmsh.view.add(name)
@@ -760,6 +1088,29 @@ function showDoFResults(problem, q, comp; t=[0.0], name="u", visible=false)
     return uvec
 end
 
+"""
+    FEM.showStressResults(problem, S, comp; t=..., name=..., visible=..., smooth=...)
+
+Loads stress results into a View in gmsh. `S` is a stress field to show, `comp` is
+the component of the field ("s", "sx", "sy", "sz", "sxy", "syz", "szx"),
+`t` is a vector of time steps (same length as the number of stress states),
+`name` is a title to display, `visible` is a true or false value to toggle on or
+off the initial visibility in gmsh and `smooth` is a true of false value to toggle
+smoothing the stress field on or off. If length of `t` is more than one, then a 
+sequence of results will be shown (eg. as an animation). This function returns
+the tag of View.
+
+Return: `tag`
+
+Types:
+- `problem`: Problem
+- `S`: StressField
+- `comp`: string
+- `t`: Vector
+- `name`: string
+- `visible`: Boolean
+- `smooth`: Boolean
+"""
 function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, smooth=true)
     gmsh.model.setCurrent(problem.name)
     dim = problem.dim
@@ -835,6 +1186,28 @@ function showStressResults(problem, S, comp; t=[0.0], name="σ", visible=false, 
     return SS
 end
 
+"""
+    FEM.plotOnPath(problem, pathName, field, points; numOfSteps=..., name=..., visible=...)
+
+Load a 2D plot on a path into a View in gmsh. `field` is the number of View in
+gmsh from which the data of a field is imported. `pathName` is the name of a
+physical group which contains a curve. The curve is devided into equal length
+intervals with number of `points` points. The field is shown at this points.
+`numOfSteps` is the sequence number of steps. `name` is the title of graph and
+`visible` is a true or false value to toggle on or off the initial visibility 
+in gmsh. This function returns the tag of View.
+
+Return: `tag`
+
+Types:
+- `problem`: Problem
+- `pathName`: string
+- `field`: Integer
+- `points`: Integer
+- `numOfStep`: Integer
+- `name`: String
+- `visible`: Boolean
+"""
 function plotOnPath(problem, pathName, field, points; numOfStep=0, name="path", visible=false)
     gmsh.model.setCurrent(problem.name)
     dimTags = gmsh.model.getEntitiesForPhysicalName(pathName)
