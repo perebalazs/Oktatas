@@ -5,9 +5,8 @@
 
 ## Functions
 
-```@autodocs
- Modules = [FEM]
- Order = [:function, :type]
+```@docs
+ FEM.load(name; fx=0, fy=0, fz=0)
 ```
 
 ## Index

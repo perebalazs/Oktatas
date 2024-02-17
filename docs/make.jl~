@@ -1,4 +1,5 @@
 push!(LOAD_PATH,"../src/")
+include("../src/FEM.jl")
 using Documenter, .FEM
 
 makedocs(sitename="My Documentation")
