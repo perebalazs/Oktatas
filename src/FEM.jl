@@ -388,10 +388,11 @@ end
 Solves a load vector of `problem`. `loads` is a tuple of name of physical group 
 `name`, coordinates `fx`, `fy` and `fz` of the intensity of distributed force.
 It can solve traction or body force depending on the problem.
-In case of 2D problems and Line physical group it means surface force.
-In case of 2D problems and Surface physical group it means body force.
-In case of 3D problems and Surface physical group it means surface force.
-In case of 3D problems and Volume physical group it means body force.
+In case of 2D problems and Line physical group means surface force.
+In case of 2D problems and Surface physical group means body force.
+In case of 3D problems and Line physical group means edge force.
+In case of 3D problems and Surface physical group means surface force.
+In case of 3D problems and Volume physical group means body force.
 
 Return: `loadVec`
 
@@ -448,17 +449,19 @@ function loadVector(problem, loads)
                     for j in 1:numIntPoints
                         H1 = H[j*pdim-(pdim-1):j*pdim, 1:pdim*numNodes]
                         ############### NANSON ###########################################
-                        if pdim == 3 && dim == 2
+                        if pdim == 3 && dim == 3
+                            Ja = jacDet[j]
+                        elseif pdim == 3 && dim == 2
                             xy = Jac[1, 3*j-2] * Jac[2, 3*j-1] - Jac[2, 3*j-2] * Jac[1, 3*j-1]
                             yz = Jac[2, 3*j-2] * Jac[3, 3*j-1] - Jac[3, 3*j-2] * Jac[2, 3*j-1]
                             zx = Jac[3, 3*j-2] * Jac[1, 3*j-1] - Jac[1, 3*j-2] * Jac[3, 3*j-1]
                             Ja = √(xy^2 + yz^2 + zx^2)
-                        elseif pdim == 2 && dim == 1
-                            Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2) * b
+                        elseif pdim == 3 && dim == 1
+                            Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2 + (Jac[3, 3*j-2])^2)
                         elseif pdim == 2 && dim == 2
                             Ja = jacDet[j] * b
-                        elseif pdim == 3 && dim == 3
-                            Ja = jacDet[j]
+                        elseif pdim == 2 && dim == 1
+                            Ja = √((Jac[1, 3*j-2])^2 + (Jac[2, 3*j-2])^2) * b
                         else
                             error("applyBoundaryConditions: dimension of the problem is $(problem.dim), dimension of load is $dim.")
                         end
