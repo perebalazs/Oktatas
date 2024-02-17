@@ -42,7 +42,7 @@ struct Problem
         elseif type == "PlaneStrain"
             dim = 2
         else
-            error("Problem = $problem ????")
+            error("Problem = $type ????")
         end
         name = gmsh.model.getCurrent()
         nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes(dim, -1, true)

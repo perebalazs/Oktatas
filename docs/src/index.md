@@ -7,7 +7,6 @@
 
 ```@autodocs
  Modules = [FEM]
- Order = [:function, :type]
 ```
 
 ## Index
