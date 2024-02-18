@@ -121,28 +121,19 @@ Types:
 """
 function generateMesh(problem, surf, elemSize; approxOrder=1, algorithm=6, quadrangle=0, internalNodes=0)
     gmsh.model.setCurrent(problem.name)
-    # lekérjük az összes csomópontot
     all = gmsh.model.getEntities(0)
-    # megadjuk, hogy a csomóponthoz rendelt eleméret mekkora legyen
     gmsh.model.mesh.setSize(all, elemSize)
-    # kiválasztjuk a 8-as számú hálózó algoritmust a 2D-s sf1 felülethez
     gmsh.model.mesh.setAlgorithm(2, surf, algorithm)
-    # legeneráljuk a hálót a felület kontúrjához (1D-s)
     gmsh.model.mesh.generate(1)
-    # legeneráljuk a hálót a felülethez (2D-s)
     gmsh.model.mesh.generate(2)
-    # a legenerált háromszög elemeket négyszög elemekké alakítjuk
     if quadrangle
         gmsh.model.mesh.recombine()
     end
-    # másodfokú elemekhez:
-    # belső csomópontok használata
     if internalNodes
-        gmsh.option.setNumber("Mesh.SecondOrderIncomplete", 0) # 0:belső csomópontokkal 1:csak éleken lévő csomópontokkal
+        gmsh.option.setNumber("Mesh.SecondOrderIncomplete", 0)
     else
-        gmsh.option.setNumber("Mesh.SecondOrderIncomplete", 1) # 0:belső csomópontokkal 1:csak éleken lévő csomópontokkal
+        gmsh.option.setNumber("Mesh.SecondOrderIncomplete", 1)
     end
-    # közelítés fokszáma (1-től 5-ig)
     gmsh.model.mesh.setOrder(approxOrder)
 end
 
@@ -180,14 +171,14 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
     elseif problem.dim == 2 && problem.type == "PlaneStress"
         D = E / (1 - ν^2) * [1 ν 0;
                              ν 1 0;
-                             0 0 (1-ν)/2] # ÁSF feladat
+                             0 0 (1-ν)/2]
         dim = 2
         rowsOfB = 3
         b = problem.thickness
     elseif problem.dim == 2 && problem.type == "PlaneStrain"
         D = E / ((1 + ν) * (1 - 2ν)) * [1-ν ν 0;
                                         ν 1-ν 0;
-                                        0 0 (1-2ν)/2] # SA feladat
+                                        0 0 (1-2ν)/2]
         dim = 2
         rowsOfB = 3
         b = 1
@@ -195,13 +186,8 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
         error("stiffnessMatrixSolid: dimension is $(problem.dim), problem type is $(problem.type).")
     end
 
-    # modell kiválasztása
     gmsh.model.setCurrent(problem.name)
-    # csomópontok sorszámának lekérése
-    #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
-    # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
-    # a lefoglalandó memória méretének becslése
     lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * dim)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
     nn = []
     I = []
@@ -226,8 +212,8 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
             Iidx[k, l] = l
             Jidx[k, l] = k
         end
-        ∂h = zeros(dim, numNodes * numIntPoints) # ∂h-t mindig csak felül kellene írni, nem kell újra és újra memóriát foglalni neki.
-        B = zeros(rowsOfB * numIntPoints, dim * numNodes) # B-t mindig csak felül kellene írni?
+        ∂h = zeros(dim, numNodes * numIntPoints)
+        B = zeros(rowsOfB * numIntPoints, dim * numNodes)
         K1 = zeros(dim * numNodes, dim * numNodes)
         nn2 = zeros(Int, dim * numNodes)
         for j in 1:length(elemTags[i])
@@ -240,11 +226,11 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
             for k in 1:numIntPoints
                 invJac[1:3, 3*k-2:3*k] = inv(Jac[1:3, 3*k-2:3*k])'
             end
-            ∂h *= 0
+            ∂h .*= 0
             for k in 1:numIntPoints, l in 1:numNodes
-                ∂h[1:dim, (k-1)*numNodes+l] = invJac[1:dim, k*3-2:k*3-(3-dim)] * ∇h[l*3-2:l*3-(3-dim), k] #??????????????????
+                ∂h[1:dim, (k-1)*numNodes+l] .= invJac[1:dim, k*3-2:k*3-(3-dim)] * ∇h[l*3-2:l*3-(3-dim), k] #??????????????????
             end
-            B *= 0
+            B .*= 0
             if dim == 2 && rowsOfB == 3
                 for k in 1:numIntPoints, l in 1:numNodes
                     B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
@@ -259,9 +245,9 @@ function stiffnessMatrix(problem; PhGname="", E=1im, ν=1im)
             else
                 error("stiffnessMatrix: rows of B is $rowsOfB, dimension of the problem is $dim.")
             end
-            K1 *= 0
+            K1 .*= 0
             for k in 1:numIntPoints
-                B1 = B[k*rowsOfB-(rowsOfB-1):k*rowsOfB, 1:dim*numNodes]
+                B1 = B[k*rowsOfB-(rowsOfB-1):k*rowsOfB, 1:dim*numNodes] # B1[...] .= B[...] ????
                 K1 += B1' * D * B1 * b * jacDet[k] * intWeights[k]
             end
             for k in 1:dim
@@ -315,16 +301,12 @@ function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
     end
 
     gmsh.model.setCurrent(problem.name)
-    # csomópontok sorszámának lekérése
-    #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
-    # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
-    # a lefoglalandó memória méretének becslése
     lengthOfIJV = sum([(div(length(elemNodeTags[i]), length(elemTags[i])) * dim)^2 * length(elemTags[i]) for i in 1:length(elemTags)])
     nn = []
     I = []
     J = []
-    V = [] # Ezt vajon nem kellene átnevezni másnak? Ebben voltak a K elemei is... A 'sparse' parancs készített róla másolatot?
+    V = []
     V = convert(Vector{Float64}, V)
     sizehint!(I, lengthOfIJV)
     sizehint!(J, lengthOfIJV)
@@ -357,7 +339,7 @@ function massMatrix(problem; PhGname="", ρ=1im, lumped=true)
                 nnet[j, k] = elemNodeTags[i][(j-1)*numNodes+k]
             end
             jac, jacDet, coord = gmsh.model.mesh.getJacobian(elem, intPoints)
-            M1 *= 0
+            M1 .*= 0
             for k in 1:numIntPoints
                 H1 = H[k*dim-(dim-1):k*dim, 1:dim*numNodes]
                 M1 += H1' * H1 * jacDet[k] * intWeights[k]
@@ -445,9 +427,9 @@ function loadVector(problem, loads)
                     elem = elementTags[ii][l]
                     jac, jacDet, coord = gmsh.model.mesh.getJacobian(elem, intPoints)
                     Jac = reshape(jac, 3, :)
-                    f1 *= 0
+                    f1 .*= 0
                     for j in 1:numIntPoints
-                        H1 = H[j*pdim-(pdim-1):j*pdim, 1:pdim*numNodes]
+                        H1 = H[j*pdim-(pdim-1):j*pdim, 1:pdim*numNodes] # H1[...] .= H[...] ????
                         ############### NANSON ###########################################
                         if pdim == 3 && dim == 3
                             Ja = jacDet[j]
@@ -584,7 +566,6 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, 
             nodeTagsX = copy(nodeTags)
             nodeTagsX *= pdim
             nodeTagsX .-= (pdim - 1)
-            #f0 = spzeros(dof, length(nodeTagsX)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsX] * ux
             f0 = sum(f0, dims=2)
             loadVec .-= f0
@@ -593,7 +574,6 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, 
             nodeTagsX = copy(nodeTags)
             nodeTagsX *= pdim
             nodeTagsX .-= (pdim - 2)
-            #f0 = spzeros(dof, length(nodeTagsX)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsX] * uy
             f0 = sum(f0, dims=2)
             loadVec .-= f0
@@ -601,7 +581,6 @@ function applyBoundaryConditions!(problem, stiffMat, massMat, dampMat, loadVec, 
         if pdim == 3 && uz != 1im
             nodeTagsY = copy(nodeTags)
             nodeTagsY *= 3
-            #f0 = spzeros(dof, length(nodeTagsY)) # ??????????????????????
             f0 = stiffMat[:, nodeTagsY] * uz
             f0 = sum(f0, dims=2)
             loadVec .-= f0
@@ -717,14 +696,14 @@ function solveStress(problem, q)
     elseif problem.dim == 2 && problem.type == "PlaneStress"
         D = E / (1 - ν^2) * [1 ν 0;
                              ν 1 0;
-                             0 0 (1-ν)/2] # ÁSF feladat
+                             0 0 (1-ν)/2]
         dim = 2
         rowsOfB = 3
         b = problem.thickness
     elseif problem.dim == 2 && problem.type == "PlaneStrain"
         D = E / ((1 + ν) * (1 - 2ν)) * [1-ν ν 0;
                                         ν 1-ν 0;
-                                        0 0 (1-2ν)/2] # SA feladat
+                                        0 0 (1-2ν)/2]
         dim = 2
         rowsOfB = 3
         b = 1
@@ -736,19 +715,12 @@ function solveStress(problem, q)
     σ = []
 
     gmsh.model.setCurrent(problem.name)
-    # csomópontok sorszámának lekérése
-    #nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(-1, -1)
-    # végeselemek típusának, sorszámának és kapcsolati mátrixának (connectivity matrix) lekérése
     elemTypes, elemTags, elemNodeTags = gmsh.model.mesh.getElements(dim, -1)
     numElem = Int[]
-    #σ = Vector{Float64}[]
-    ##σx = Vector{Float64}[]
-    ##σy = Vector{Float64}[]
-    ##σxy = Vector{Float64}[]
     for i in 1:length(elemTypes)
         et = elemTypes[i]
         elementName, dim, order, numNodes::Int64, localNodeCoord, numPrimaryNodes = gmsh.model.mesh.getElementProperties(et)
-        s0 = zeros(rowsOfB * numNodes) # csak SA és ÁSF feladatnál, FSZ-nél már 4 kell
+        s0 = zeros(rowsOfB * numNodes)
         nodeCoord = zeros(numNodes * 3)
         for k in 1:dim, j = 1:numNodes
             nodeCoord[k+(j-1)*3] = localNodeCoord[k+(j-1)*dim]
@@ -770,11 +742,11 @@ function solveStress(problem, q)
             for k in 1:numNodes
                 invJac[1:3, 3*k-2:3*k] = inv(Jac[1:3, 3*k-2:3*k])'
             end
-            ∂h *= 0
+            ∂h .*= 0
             for k in 1:numNodes, l in 1:numNodes
                 ∂h[1:dim, (k-1)*numNodes+l] = invJac[1:dim, k*3-2:k*3-(3-dim)] * ∇h[l*3-2:l*3-(3-dim), k] #??????????????????
             end
-            B *= 0
+            B .*= 0
             if dim == 2 && rowsOfB == 3
                 for k in 1:numNodes, l in 1:numNodes
                     B[k*3-0, l*2-0] = B[k*3-2, l*2-1] = ∂h[1, (k-1)*numNodes+l]
@@ -793,7 +765,7 @@ function solveStress(problem, q)
             for k in 1:dim
                 nn2[k:dim:dim*numNodes] = dim * nnet[j, 1:numNodes] .- (dim - k)
             end
-            s = zeros(9numNodes, nsteps) # tenzornak 9 eleme van
+            s = zeros(9numNodes, nsteps) # tensors have nine elements
             for k in 1:numNodes
                 if rowsOfB == 6 && dim == 3
                     B1 = B[k*6-5:k*6, 1:3*numNodes]
@@ -1083,7 +1055,7 @@ function showDoFResults(problem, q, comp; t=[0.0], name="u", visible=false)
     gmsh.view.option.setNumber(uvec, "DisplacementFactor", 0)
     gmsh.view.option.setNumber(uvec, "AdaptVisualizationGrid", 1)
     gmsh.view.option.setNumber(uvec, "TargetError", -1e-4)
-    gmsh.view.option.setNumber(uvec, "MaxRecursionLevel", 1) # order + 1
+    gmsh.view.option.setNumber(uvec, "MaxRecursionLevel", 1)
     if visible == false
         gmsh.view.option.setNumber(uvec, "Visible", 0)
     end
