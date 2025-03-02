@@ -18,7 +18,7 @@ Recombine Surface {1};
 Transfinite Line {1,3} = 3;
 Transfinite Line {2,4} = 2;
 
-Mesh.ElementOrder = 1;
+Mesh.ElementOrder = 2;
 
 
 SetName "cantilever";
