@@ -22,7 +22,7 @@ Recursive Delete {
 }
 
 //+
-Transfinite Curve {6, 2, 4} = 21 Using Progression 1;
+Transfinite Curve {-6, 2, 4} = 11 Using Progression 1.18;
 Transfinite Curve {5, 7, 1, 3} = 7 Using Progression 1;
 //+
 Transfinite Surface {2};
