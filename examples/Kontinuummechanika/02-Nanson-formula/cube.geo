@@ -30,3 +30,7 @@ Physical Surface("rear", 18) = {5};
 Physical Volume("body", 19) = {1};
 //+
 Mesh.SurfaceEdges = 0;
+//+
+Point(9) = {0.5, 0.5, 0.5, 1.0};
+//+
+Physical Point("P", 20) = {9};
