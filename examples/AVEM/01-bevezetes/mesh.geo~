@@ -1,0 +1,15 @@
+//+
+SetFactory("OpenCASCADE");
+Box(1) = {0, 0, 0, 10, 10, 10};
+//+
+Recombine Surface {2, 1, 4, 5, 6, 3};
+//+
+Transfinite Curve {9, 8, 5, 11, 4, 1, 10, 6, 7, 3, 12, 2} = 5 Using Progression 1;
+//+
+Transfinite Surface {2} = {6, 5, 7, 8};
+//+
+Transfinite Surface {3};
+//+
+Transfinite Surface {5};
+//+
+Transfinite Volume{1};

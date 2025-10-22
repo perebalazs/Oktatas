@@ -42,11 +42,6 @@ Physical Curve("top", 12) = {7};
 Physical Curve("path", 13) = {2};
 
 
+
 //+
-Point(7) = {4.9, 0.0001, 0, 1.0};
-//+
-Point(8) = {100, 0.0001, 0, 1.0};
-//+
-Line(8) = {7, 8};
-//+
-Physical Curve("path_b", 14) = {8};
+Physical Curve("hole", 14) = {5, 1};

@@ -32,7 +32,7 @@ Transfinite Surface {1};
 
 
 Recombine Surface {2, 1};
-Mesh.ElementOrder = 1;
+Mesh.ElementOrder = 3;
 Mesh 2;
 
 //+

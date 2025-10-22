@@ -22,10 +22,8 @@ Recursive Delete {
 }
 
 //+
-Transfinite Curve {6, 2, 4} = 11 Using Progression 1;
-Transfinite Curve {5, 7, 1, 3} = 4 Using Progression 1;
-//Transfinite Curve {6, 2, 4} = 50 Using Progression 1;
-//Transfinite Curve {5, 7, 1, 3} = 15 Using Progression 1;
+Transfinite Curve {-6, 2, 4} = 11 Using Progression 1.18;
+Transfinite Curve {5, 7, 1, 3} = 7 Using Progression 1;
 //+
 Transfinite Surface {2};
 //+
@@ -51,3 +49,5 @@ Physical Curve("top", 12) = {7};
 Physical Curve("path", 13) = {2};
 //+
 
+//+
+Physical Curve("hole", 14) = {5, 1};

@@ -35,3 +35,6 @@ Physical Curve("right", 11) = {3};
 Physical Curve("top", 12) = {7};
 //+
 Physical Curve("path", 13) = {2};
+
+//+
+Physical Curve("hole", 14) = {5, 1};
