@@ -1,0 +1,114 @@
+What if defining a hyperelastic material was just writing a free energy function?
+
+In this example, the constitutive behaviour is defined by a single Julia function
+ψ(C, p).
+
+No material classes.
+No special DSL.
+No automatic differentiation pipeline.
+
+The same Newton solver handles:
+– large rotations
+– follower loads
+– nearly incompressible response (ν = 0.49)
+– adaptive load stepping for stability
+
+Only the free energy changes.
+
+Below I’m showing two short excerpts from the code:
+
+the free energy definition,
+
+the core Newton iteration loop.
+
+These are not pseudocode fragments, but actual working solver code.
+Many technical details are omitted here on purpose — what remains is the essential structure.
+
+The video shows the deformation under follower loading,
+while the convergence plot displays the relative Newton update on a logarithmic scale (iteration count on the horizontal axis).
+
+This is part of ongoing work on LowLevelFEM.jl, with the goal of keeping the numerical algorithm explicit and transparent, while allowing maximum freedom in constitutive modelling.
+
+I’d be curious how others approach energy-based formulations in their FEM workflows.
+
+...
+
+μ = 67 MPa
+κ = 3333.3 MPa (ν = 0.49)
+
+function ψ(C, p) # Neo-Hooke
+    μ = p.μ
+    κ = p.κ
+
+    I = [1.0 0 0; 0 1 0; 0 0 1]
+    C_I = tr(C)
+    C_III = det(C)
+    J = √C_III
+
+    return μ / 2 * (C_I / (C_III^(1 / 3)) - 3) + κ / 2 * log(J)^2
+end
+
+...
+
+j = 0
+while err < 10 * err_prev && j < iterationSteps
+    j += 1
+    sc = 30
+    load = BoundaryCondition("right", 
+                             fy=(x, y, z) -> -(z - 0.5) * sc * λ_trial, 
+                             fz=(x, y, z) -> (y - 0.5) * sc * λ_trial)
+
+    Kmat = materialTangentMatrix(prob, F=F, energy=ψ, params=p)
+    Kgeo = initialStressMatrix(prob, energy=ψ, params=p, C=C)
+    Kint = Kmat + Kgeo
+
+    Fright = nodesToElements(elementsToNodes(F), onPhysicalGroup="right")
+    Kext = externalTangentFollower(prob, [load], F=Fright)
+    K = Kint - Kext
+
+    f_int = internalForceVector(prob, energy=ψ, params=p, F=F)
+    f_ext = loadVector(prob, [load], F=Fright)
+    f = f_ext - f_int
+
+    Δu = solveField(K, f, support=[suppX])
+
+    u += Δu
+    F = I + u ∘ ∇
+    C = F' * F
+    S = IIPiolaKirchhoff(ψ, C, p)
+    P = F * S
+
+    err = norm(DoFs(Δu)[:, 1]) / max(norm(DoFs(u)[:, 1]), 1e-12)
+
+    push!(ε, err)
+
+    if err < err_limit
+        converged = true
+        i += 1
+        nstep = i
+        break
+    end
+
+    if err > err_prev
+        break
+    end
+
+    err_prev = err
+end
+...
+
+
+
+
+
+
+
+
+
+Example notebook and source code are available here:
+👉 https://github.com/perebalazs/LowLevelFEM.jl/blob/main/examples/LinkedIn/Large-deformations_twist_energy_based.ipynb
+
+The notebook contains the full setup behind the video and the convergence plot, including the free energy definition, follower loading, and the adaptive load-step control.
+
+
+
