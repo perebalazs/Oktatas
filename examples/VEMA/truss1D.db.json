@@ -1,0 +1,30 @@
+{ "onelab":{
+  "creator":"Gmsh",
+  "date":"Mon Feb 23 21:25:01 2026",
+  "version":"1.3",
+  "parameters":[
+    { "type":"number", "name":"0Metamodel/Loop", "changedValue":31, "visible":false, "readOnly":false, "values":[ 0 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/Action", "changedValue":0, "visible":false, "readOnly":false, "clients":{ "Gmsh":0 }, "values":[ "" ] , "kind":"generic" },
+    { "type":"string", "name":"Gmsh/Model absolute path", "changedValue":0, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ "/home/perebal/Dokumentumok/GitHub/Oktatas/examples/VEMA/" ] , "kind":"generic" },
+    { "type":"number", "name":"Gmsh/Model dimension", "changedValue":1, "visible":false, "readOnly":true, "attributes":{ "Closed":"1" }, "clients":{ "Gmsh":0 }, "values":[ 1 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/Model name", "changedValue":0, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ "truss1D.geo" ] , "kind":"file" },
+    { "type":"string", "name":"Gmsh/MshFileName", "label":"Mesh name", "changedValue":31, "visible":true, "readOnly":false, "attributes":{ "Closed":"1" }, "clients":{ "Gmsh":0 }, "values":[ "truss1D.msh" ] , "kind":"file" },
+    { "type":"number", "name":"Gmsh/Number of physical groups", "changedValue":1, "visible":false, "readOnly":true, "attributes":{ "Closed":"1" }, "clients":{ "Gmsh":0 }, "values":[ 3 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Gmsh/Physical group 1/Dimension", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 0 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/Physical group 1/Name", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ "left" ] , "kind":"generic" },
+    { "type":"number", "name":"Gmsh/Physical group 1/Number", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 2 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Gmsh/Physical group 2/Dimension", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 0 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/Physical group 2/Name", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ "right" ] , "kind":"generic" },
+    { "type":"number", "name":"Gmsh/Physical group 2/Number", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 3 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Gmsh/Physical group 3/Dimension", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 1 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/Physical group 3/Name", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ "truss" ] , "kind":"generic" },
+    { "type":"number", "name":"Gmsh/Physical group 3/Number", "changedValue":1, "visible":false, "readOnly":true, "clients":{ "Gmsh":0 }, "values":[ 4 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"string", "name":"Gmsh/}Input files", "changedValue":31, "visible":false, "readOnly":true, "attributes":{ "AutoCheck":"0" }, "clients":{ "Gmsh":0 }, "values":[ "truss1D.geo" ] , "kind":"file", "choices":[ "/home/perebal/.gmshrc", "truss1D.geo" ] },
+    { "type":"string", "name":"ONELAB/Action", "changedValue":0, "visible":false, "readOnly":false, "attributes":{ "Persistent":"1" }, "values":[ "compute" ] , "kind":"generic" },
+    { "type":"string", "name":"ONELAB/Button", "changedValue":3, "visible":false, "readOnly":false, "attributes":{ "Persistent":"1" }, "clients":{ "Gmsh":0 }, "values":[ "" ] , "kind":"generic" },
+    { "type":"number", "name":"Parameters/F", "changedValue":31, "visible":true, "readOnly":false, "clients":{ "Gmsh":0 }, "values":[ 10 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Parameters/fx", "changedValue":31, "visible":true, "readOnly":false, "clients":{ "Gmsh":0 }, "values":[ 1 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Parameters/l", "changedValue":31, "visible":true, "readOnly":false, "clients":{ "Gmsh":0 }, "values":[ 100 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 },
+    { "type":"number", "name":"Parameters/n", "changedValue":31, "visible":true, "readOnly":false, "attributes":{ "Graph":"000000000000000000000000000000000000", "Loop":"" }, "clients":{ "Gmsh":0 }, "values":[ 20 ], "min":-1e+200, "max":1e+200, "step":0, "index":-1 }
+  ] }
+}
