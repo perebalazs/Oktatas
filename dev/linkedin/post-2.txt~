@@ -1,0 +1,38 @@
+If you know the weak form of a PDE, you can almost copy it from paper into executable code.
+
+I’ve just added a steady Navier–Stokes example to my Julia FEM framework, LowLevelFEM.jl.
+
+The idea behind the project is to assemble PDE systems directly from their weak form using variational operators (grad, div, etc.).
+In practice this means that if you know the weak form of a problem, you can almost copy it from paper into executable code.
+
+The snippet below is not pseudocode — it is the actual code used in the solver.
+
+
+μ = 1.0
+γ = 1e-1     # grad-div stabilization
+δ = 1e-6     # pressure stabilization
+
+A = ∫((ε(Pv) ⋅ ε(Pv)) * 2μ)
+D = ∫(Div(Pv) ⋅ Div(Pv) * γ)
+B = ∫(Div(Pv) ⋅ Pp)
+C = ∫(Grad(Pp) ⋅ Grad(Pp) * δ)
+
+K = SystemMatrix([
+    A + D   B'
+    B      -C
+])
+
+v, p = solveField(K, F, support=[pres0, suppT, suppB])
+
+
+Although this example solves the stationary Navier–Stokes equations, the same operator-based formulation can be used to build many other PDE systems (diffusion, elasticity, coupled multiphysics models, etc.).
+
+Interestingly, the Navier–Stokes example itself took less than half an hour to implement.
+Most of the recent development time (~2 weeks of spare-time work) went into building the general weak-form infrastructure that makes this possible.
+
+Note: In case of linear elasticity the code is similar
+K = ∫(2μ * (ε(u) ⋅ ε(v)) + λ * (div(u) * div(v)))
+
+Out of curiosity:
+What multiphysics or multi-field problem would you try to prototype with such an operator-based FEM framework?
+

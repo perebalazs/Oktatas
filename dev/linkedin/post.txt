@@ -1,0 +1,20 @@
+Pp = Problem([material], type=:ScalarField, field=:p, rhs_field=:fp, dim=2)
+Pv = Problem([material], type=:VectorField, field=:v, rhs_field=:fv, dim=2)
+
+pres0 = BoundaryCondition("rightbottom", problem=Pp, p=0)
+suppT = BoundaryCondition("top", problem=Pv, vx=0, vy=0)
+suppB = BoundaryCondition("bottom", problem=Pv, vx=0, vy=0)
+
+μ = 1.0
+# stabilization
+γ = 1e-1          # grad-div ( 1e-2...1e0)
+δ = 1e-6          # pressure Laplacian (mesh dependent)
+
+A = ∫((SymGrad(Pv) ⋅ SymGrad(Pv)) * 2μ)
+D = ∫(Div(Pv) ⋅ Div(Pv) * γ)
+B = ∫(Div(Pv) ⋅ Pp)
+C = ∫(Grad(Pp) ⋅ Grad(Pp) * δ)
+
+K = SystemMatrix([A+D B'; B -C])
+
+v, p = solveField(K, F, support=[pres0, suppT, suppB])

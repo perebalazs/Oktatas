@@ -1,0 +1,17 @@
+μ = 1.0
+
+# stabilization
+γ = 1e-1          # grad-div ( 1e-2...1e0)
+δ = 1e-6          # pressure Laplacian (mesh dependent)
+
+A = ∫((SymGrad(Pu) ⋅ SymGrad(Pu)) * 2μ)
+D = ∫(Div(Pu) ⋅ Div(Pu) * γ)
+
+# alternative way
+AD = ∫((SymGrad(Pu) ⋅ SymGrad(Pu)) * 2μ + γ * (Div(Pu) ⋅ Div(Pu)))
+
+B = ∫(Div(Pu) ⋅ Pp)
+C = ∫(Grad(Pp) ⋅ Grad(Pp) * δ)
+
+K = SystemMatrix([A+D B';
+    B -C])
