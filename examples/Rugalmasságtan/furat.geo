@@ -2,7 +2,7 @@
 SetFactory("OpenCASCADE");
 Rectangle(1) = {-500, -50, 0, 1000, 100, 0};
 //+
-Disk(2) = {0, 0, 0, 5, 5};
+Disk(2) = {0, 0, 0, 20, 20};
 //+
 BooleanDifference{ Surface{1}; Delete; }{ Surface{2}; Delete; }
 //+
