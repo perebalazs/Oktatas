@@ -1,0 +1,21 @@
+<VTKFile type="PUnstructuredGrid" version="1.0" byte_order="LittleEndian">
+<PUnstructuredGrid GhostLevel="0">
+<PPoints>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3"/>
+</PPoints>
+<PCells>
+<PDataArray type="Int64" Name="connectivity" NumberOfComponents="1"/>
+<PDataArray type="Int64" Name="offsets" NumberOfComponents="1"/>
+<PDataArray type="UInt8" Name="types" NumberOfComponents="1"/>
+</PCells>
+<PPointData>
+<PDataArray type="Float64" Name="τxy" NumberOfComponents="1"/>
+</PPointData>
+<PCellData>
+</PCellData>
+<Piece Source="τxy_step0_level1_tol-0.0001_npart4/data0.vtu"/>
+<Piece Source="τxy_step0_level1_tol-0.0001_npart4/data1.vtu"/>
+<Piece Source="τxy_step0_level1_tol-0.0001_npart4/data2.vtu"/>
+<Piece Source="τxy_step0_level1_tol-0.0001_npart4/data3.vtu"/>
+</PUnstructuredGrid>
+</VTKFile>
