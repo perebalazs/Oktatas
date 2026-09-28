@@ -14,6 +14,7 @@ Transfinite Surface {5};
 //+
 Transfinite Volume{1};
 
+Mesh.ElementOrder=2;
 Mesh 3;
 
 //+

@@ -60,8 +60,12 @@ Extrude {0, 0, 500} {
 Extrude {0, 0, 500} {
   Surface{14}; 
 }
+
+Point(120) = {0, 0, 1000, 1.0};
+Point(121) = {0, 0, 500, 1.0};
 //+
-MeshSize {:} = 5.5;
+Periodic Surface{1}={27} Translate {0, 0, -1000};
+MeshSize {:} = 3.5;
 Coherence;
 Mesh 3;
 
@@ -90,4 +94,6 @@ Line(111) = {101, 102};
 //+
 Line(112) = {102, 103};
 //+
-Physical Curve("path", 120) = {110, 111, 112};
+Physical Curve("path", 120) = {110, 111, 112};//+
+Physical Point("P", 121) = {120};
+Physical Point("Q", 122) = {121};
