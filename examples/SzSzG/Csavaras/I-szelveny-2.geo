@@ -65,8 +65,9 @@ Point(120) = {0, 0, 1000, 1.0};
 Point(121) = {0, 0, 500, 1.0};
 //+
 Periodic Surface{1}={27} Translate {0, 0, -1000};
-MeshSize {:} = 3.5;
+MeshSize {:} = 5;
 Coherence;
+Mesh.ElementOrder=2;
 Mesh 3;
 
 //+
