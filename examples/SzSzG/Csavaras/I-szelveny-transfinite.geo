@@ -70,22 +70,32 @@ MeshSize {8, 9, 10, 5, 7, 6, 12, 1, 11, 4, 3, 2} = 3.3;
 //+
 Recombine Surface {1, 2, 3};
 //+
+//Mesh 2;
+//+
+Extrude {0, 0, 500} {
+  Surface{3}; Surface{2}; Surface{1}; Recombine;
+}
+//+
+Extrude {0, 0, 500} {
+  Surface{20}; Surface{14}; Surface{10}; Recombine;
+}
 Transfinite Surface {1} = {9, 6, 7, 8};
 //+
 Transfinite Surface {2} = {11, 4, 5, 10};
 //+
 Transfinite Surface {3} = {1, 2, 3, 12};
 //+
-//Mesh 2;
+Transfinite Surface {27} = {27, 30, 25, 26};
 //+
-Extrude {0, 0, 500} {
-  Surface{3}; Surface{2}; Surface{1}; Layers {166}; Recombine;
-}
+Transfinite Surface {31} = {31, 32, 29, 28};
 //+
-Extrude {0, 0, 500} {
-  Surface{20}; Surface{14}; Surface{10}; Layers {166}; Recombine;
-}
+Transfinite Surface {37} = {34, 35, 36, 33};
+//+
+Periodic Surface{1}={27} Translate {0, 0, -1000};
+Periodic Surface{2}={31} Translate {0, 0, -1000};
+Periodic Surface{3}={37} Translate {0, 0, -1000};
 Coherence;
+//Recombine Surface {:};
 Mesh 3;
 //+
 Physical Volume("body", 67) = {3, 2, 1, 6, 5, 4};

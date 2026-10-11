@@ -26,6 +26,10 @@ Curve Loop(2) = {5};
 //+
 Plane Surface(1) = {1, 2};
 
+//+
+MeshSize {5} = 1;
+//+
+MeshSize {4, 1, 2, 3} = 10;
 Mesh 2;
 //+
 Physical Curve("left", 6) = {4};

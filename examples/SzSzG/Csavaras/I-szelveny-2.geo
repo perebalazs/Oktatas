@@ -1,6 +1,7 @@
 //+
 SetFactory("OpenCASCADE");
 //+
+L = 10;
 Point(1) = {-50, -100, 0, 1.0};
 //+
 Point(2) = {50, -100, 0, 1.0};
@@ -53,25 +54,28 @@ Curve Loop(1) = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1};
 //+
 Plane Surface(1) = {1};
 //+
-Extrude {0, 0, 500} {
+Extrude {0, 0, L} {
   Surface{1}; 
 }
 //+
-Extrude {0, 0, 500} {
+Extrude {0, 0, L} {
   Surface{14}; 
 }
 
-Point(120) = {0, 0, 1000, 1.0};
-Point(121) = {0, 0, 500, 1.0};
+Point(120) = {0, 0, 2*L, 1.0};
+Point(121) = {0, 0, L, 1.0};
 //+
-Periodic Surface{1}={27} Translate {0, 0, -1000};
+//Periodic Surface{1}={27} Translate {0, 0, -1000};
 MeshSize {:} = 5;
+MeshSize {19, 18, 17, 16, 15, 13, 14, 24, 23, 22, 21, 20} = 1;
+//+
 Coherence;
-Mesh.ElementOrder=2;
+Mesh.ElementOrder=1;
 Mesh 3;
 
 //+
-Physical Volume("body", 61) = {1, 2};
+Physical Volume("body", 61) = {1,2};
+Physical Volume("bodyL", 65) = {1};
 //+
 Physical Surface("left", 62) = {1};
 //+
@@ -81,13 +85,13 @@ Physical Surface("mid", 64) = {14};
 //+
 
 //+
-Point(100) = {50, 95, 500, 1.0};
+Point(100) = {50, 95, L, 1.0};
 //+
-Point(101) = {0, 95, 500, 1.0};
+Point(101) = {0, 95, L, 1.0};
 //+
-Point(102) = {0, -95, 500, 1.0};
+Point(102) = {0, -95, L, 1.0};
 //+
-Point(103) = {50, -95, 500, 1.0};
+Point(103) = {50, -95, L, 1.0};
 //+
 Line(110) = {100, 101};
 //+
@@ -98,3 +102,4 @@ Line(112) = {102, 103};
 Physical Curve("path", 120) = {110, 111, 112};//+
 Physical Point("P", 121) = {120};
 Physical Point("Q", 122) = {121};
+Physical Point("A", 123) = {1};
