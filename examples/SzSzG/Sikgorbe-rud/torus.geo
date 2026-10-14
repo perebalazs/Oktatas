@@ -5,6 +5,9 @@ R = 15; // > r
 r = 5;
 //+
 a = 1.7;
+f = 70;
+f = Pi / 180 * f;
+f2 = Pi / 2 - f;
 //+
 Circle(1) = {0, R, 0, r, 0, 2*Pi};
 //+
@@ -72,11 +75,11 @@ Transfinite Surface {5} = {2, 3, 4, 5};
 //+
 Recombine Surface {4, 5, 2, 3, 1};
 
-Extrude {{1, 0, 0}, {0, 0, 0}, Pi/4} {
+Extrude {{1, 0, 0}, {0, 0, 0}, f} {
   Surface{3}; Surface{1}; Surface{2}; Surface{4}; Surface{5}; Layers{pcs2+1}; Recombine;
 }
 //+
-Extrude {{1, 0, 0}, {0, 0, 0}, Pi/4} {
+Extrude {{1, 0, 0}, {0, 0, 0}, f2} {
   Surface{23}; Surface{22}; Surface{19}; Surface{15}; Surface{10}; Layers{pcs2+1}; Recombine;
 }
 
@@ -85,6 +88,8 @@ Mesh.ElementOrder=1;
 Mesh 3;
 //+
 Physical Volume("body", 63) = {4, 3, 5, 1, 7, 2, 8, 10, 6, 9};
+//+
+Physical Volume("body1", 68) = {4, 3, 5, 1, 2};
 //+
 Physical Surface("supp", 64) = {2, 1, 3, 4, 5};
 //+
