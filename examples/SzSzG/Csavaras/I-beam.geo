@@ -100,9 +100,6 @@ Extrude {0, 0, L/2} {
 Extrude {0, 0, L/2} {
   Surface{10}; Surface{14}; Surface{20}; Layers {Ceil(L/2 / (t/n))}; Recombine;
 }
-Periodic Surface{1}={27} Translate {0, 0, -L};
-Periodic Surface{2}={31} Translate {0, 0, -L};
-Periodic Surface{3}={37} Translate {0, 0, -L};
 //+
 Point(37) = {0, 0, L, 1.0};
 //+
@@ -111,6 +108,9 @@ Mesh.ElementOrder=p;
 //+
 Mesh 3;
 
+Periodic Surface{1}={27} Translate {0, 0, -L};
+Periodic Surface{2}={31} Translate {0, 0, -L};
+Periodic Surface{3}={37} Translate {0, 0, -L};
 //+
 Physical Volume("beam", 67) = {1, 2, 3, 4, 5, 6};
 //+

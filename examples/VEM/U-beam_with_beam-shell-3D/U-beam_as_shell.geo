@@ -1,0 +1,58 @@
+//+ LowLevelFEM
+//+
+SetFactory("OpenCASCADE");
+//+
+b = DefineNumber[ 50, Name "Parameters/base" ];
+//+
+h = DefineNumber[ 100, Name "Parameters/height" ];
+//+
+t = DefineNumber[ 5, Name "Parameters/thikness" ];
+//+
+l = DefineNumber[ 500, Name "Parameters/length" ];
+//+
+n = DefineNumber[ 5, Name "Parameters/elements" ];
+//+
+p = DefineNumber[ 1, Name "Parameters/order" ];
+//+
+Point(1) = {-b/2, -h/2+t/2, 0, 1.0};
+//+
+Point(2) = {0, -h/2+t/2, 0, 1.0};
+//+
+Point(3) = {b/2, -h/2+t/2, 0, 1.0};
+//+
+Point(4) = {-b/2, h/2-t/2, 0, 1.0};
+//+
+Point(5) = {0, h/2-t/2, 0, 1.0};
+//+
+Point(6) = {b/2, h/2-t/2, 0, 1.0};
+//+
+Line(1) = {1, 2};
+//+
+Line(2) = {2, 3};
+//+
+Line(3) = {2, 5};
+//+
+Line(4) = {4, 5};
+//+
+Line(5) = {5, 6};
+//+
+Transfinite Curve {1, 2, 4, 5} = n+1 Using Progression 1;
+n1 = Ceil((h-t) / (b/2 / n)) + 1;
+
+//+
+Transfinite Curve {3} = n1 Using Progression 1;
+
+Mesh 1;
+
+
+//+
+Extrude {0, 0, l} {
+  Curve{4}; Curve{5}; Curve{3}; Curve{2}; Curve{1}; Layers {Ceil(l / (b/2/n)) + 1}; Recombine;
+}
+
+Mesh 2;//+
+Physical Surface("shell", 17) = {3, 1, 2, 5, 4};
+//+
+Physical Curve("support", 18) = {2, 1, 3, 5, 4};
+//+
+Physical Curve("load", 19) = {16, 14, 12, 10, 8};
